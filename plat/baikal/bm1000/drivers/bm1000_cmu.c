@@ -59,12 +59,6 @@
 #define CMU_MSHC_CLKDIV				BIT(16)
 #define CMU_MSHC_DIV				16
 
-/*
- * Target VCO reference clock is 250 kHz.
- * May help us avoid fractional CLKF in most cases.
- */
-#define VCO_REF		250000
-
 struct plldivs {
 	uint32_t clkr;
 	uint32_t clkfhi;
@@ -73,18 +67,18 @@ struct plldivs {
 };
 
 static void	 cmu_read_plldivs	    (const uintptr_t base, struct plldivs *const plldivs);
-static void	 cmu_calc_clkf		    (const uint64_t frefclk, const uint64_t fpllreq, struct plldivs *const plldivs);
+static int	 cmu_calc_clkf		    (uint64_t frefclk, uint64_t fpllreq, struct plldivs *plldivs);
 static uint64_t	 cmu_calc_fpll		    (const uint64_t frefclk, const struct plldivs *const plldivs);
-static void	 cmu_set_clkf		    (const struct cmu_desc *const cmu, const uint64_t frefclk, const uint64_t fpllreq);
+static void	 cmu_set_clkf		    (struct cmu_desc *cmu, uint64_t frefclk, uint64_t fpllreq);
 static int	 cmu_clkch_calc_div	    (const struct cmu_desc *const cmu, const unsigned clkch, uint64_t fclkchreq);
 static int	 cmu_clkch_get_div	    (const struct cmu_desc *const cmu, const unsigned clkch);
 static uintptr_t cmu_clkch_get_reg	    (const uintptr_t base, const unsigned clkch);
 static int	 cmu_clkch_set_div	    (const struct cmu_desc *const cmu, const unsigned clkch, uint32_t div);
 static struct cmu_desc *const cmu_desc_get_by_base(const uintptr_t base);
 static int	 cmu_pll_lock_debounce	    (const uintptr_t base);
-static int	 cmu_runtime_set_core_rate  (const struct cmu_desc *const cmu, const uint64_t frefclk, const uint64_t fpllreq);
-static int	 cmu_runtime_set_periph_rate(const struct cmu_desc *const cmu, uint64_t frefclk, const uint64_t fpllreq);
-static int	 cmu_runtime_set_rate	    (const struct cmu_desc *const cmu, const uint64_t frefclk, const uint64_t fpllreq);
+static int	 cmu_runtime_set_core_rate  (struct cmu_desc *cmu, uint64_t frefclk, uint64_t fpllreq);
+static int	 cmu_runtime_set_periph_rate(struct cmu_desc *cmu, uint64_t frefclk, uint64_t fpllreq);
+static int	 cmu_runtime_set_rate	    (struct cmu_desc *cmu, uint64_t frefclk, uint64_t fpllreq);
 
 static struct cmu_desc cmus[20];
 
@@ -105,19 +99,84 @@ static void cmu_read_plldivs(const uintptr_t base,
 			  CMU_PLL_CTL2_CLKFHI_MASK;
 }
 
-static void cmu_calc_clkf(const uint64_t frefclk,
-			  const uint64_t fpllreq,
-			  struct plldivs *const plldivs)
+#define VCO_MAX	1000000000	// 1GHz - we want to set VCO freq close to that
+#define CLKNR_MAX	2000	// accept ref. divisor up to this (max is 4096)
+
+/*
+ * Calculate best approximation for 'nf' and 'nr' such that
+ * vco = parent * nf / nr; nr <= CLKNR_MAX
+ */
+static void calc_frac(uint64_t prate, uint64_t vco, uint32_t *nf, uint32_t *nr)
 {
+	int mp = 0, np = 1;
+	int mt = 1, nt = vco / prate;
+	uint32_t rp = prate, rt = vco % prate, rn;
+	int f, mn, nn;
+
+	while (rt) {
+		f = rp / rt;
+		rn = rp % rt;
+		mn = mp + f * mt;
+		nn = np + f * nt;
+		if (nn > CLKNR_MAX)
+			break;
+		mp = mt;
+		np = nt;
+		rp = rt;
+		mt = mn;
+		nt = nn;
+		rt = rn;
+	}
+
+	*nf = nt;
+	*nr = mt;
+}
+
+/*
+ * A simple helper function: find max divisor of 'n'
+ * between low and high. If there are no divisors return high;
+ */
+static inline uint32_t max_div(uint32_t n, uint32_t high, uint32_t low)
+{
+	uint32_t t = high;
+
+	for (t = high; (t >= low) && (n % t); t++)
+		;
+
+	return (t < low) ? high : t;
+}
+
+static int cmu_calc_clkf(uint64_t frefclk,
+			 uint64_t fpllreq,
+			 struct plldivs *plldivs)
+{
+	uint32_t od;
+
 	assert(plldivs);
 
-	/* FIXME: this is a f*cked up place */
-	plldivs->clkfhi = ((fpllreq * plldivs->clkod * plldivs->clkr) << 1) /
-			  frefclk;
+	plldivs->clkflo = 0;
 
-	/* You have to be very careful with the order of operations here */
-	plldivs->clkflo = ((fpllreq * plldivs->clkod) << 33) /
-			  (frefclk / plldivs->clkr);
+	if (fpllreq > VCO_MAX) {
+		od = 1;
+	} else {
+		od = VCO_MAX / fpllreq;
+		if (od > (1 << 11))
+			od = 1 << 11;
+		od = max_div((uint32_t)frefclk, od, od / 4 + 1);
+	}
+
+	plldivs->clkod = od;
+	calc_frac(frefclk, fpllreq * od, &plldivs->clkfhi, &plldivs->clkr);
+	plldivs->clkfhi <<= 1;
+
+	if ((plldivs->clkr == 0) || (plldivs->clkr > (1 << 12)) ||
+	    (plldivs->clkfhi == 0) || (plldivs->clkfhi > (1 << 18))) {
+		ERROR("Out of range: NR = %u, NF = %u!\n", plldivs->clkr,
+		      plldivs->clkfhi);
+		return -EINVAL;
+	}
+
+	return 0;
 }
 
 static uint64_t cmu_calc_fpll(const uint64_t frefclk,
@@ -146,24 +205,41 @@ bool cmu_is_mmca57(const uintptr_t base)
 	       base == MMCA57_3_LCRU;
 }
 
-static void cmu_set_clkf(const struct cmu_desc *const cmu,
-			 const uint64_t frefclk,
-			 const uint64_t fpllreq)
+static void cmu_set_clkf(struct cmu_desc *cmu,
+			 uint64_t frefclk,
+			 uint64_t fpllreq)
 {
 	struct plldivs plldivs;
+	uint32_t reg, clknf;
 
 	assert(cmu);
 	assert(cmu->base);
 
-	cmu_read_plldivs(cmu->base, &plldivs);
-	cmu_calc_clkf(frefclk, fpllreq, &plldivs);
+	if (cmu_is_mmca57(cmu->base)) {
+		reg  = mmio_read_32(cmu->base + CMU_PLL_CTL0_REG);
+		if (reg & (CMU_PLL_CTL0_CLKR_MASK | CMU_PLL_CTL0_CLKOD_MASK)) {
+			WARN("%s: (CPU) unexpected NF/OD: %x\n", __func__, reg);
+			reg &= ~(CMU_PLL_CTL0_CLKR_MASK | CMU_PLL_CTL0_CLKOD_MASK);
+			mmio_write_32(cmu->base + CMU_PLL_CTL0_REG, reg);
+		}
+		clknf = fpllreq / frefclk;
+		mmio_write_32(cmu->base + CMU_PLL_CTL1_REG, 0);
+		mmio_write_32(cmu->base + CMU_PLL_CTL2_REG, clknf << 1);
+		cmu->fpllreq = frefclk * clknf;
+	} else if (!cmu_calc_clkf(frefclk, fpllreq, &plldivs)) {
+		INFO("%s <- %llu Hz, clkod:0x%x clkr:0x%x clkfhi:0x%x clkflo:0x%x\n",
+		     cmu->name, fpllreq,
+		     plldivs.clkod, plldivs.clkr, plldivs.clkfhi, plldivs.clkflo);
+		reg  = mmio_read_32(cmu->base + CMU_PLL_CTL0_REG);
+		reg &= ~(CMU_PLL_CTL0_CLKR_MASK | CMU_PLL_CTL0_CLKOD_MASK);
+		reg |= (plldivs.clkr - 1) << CMU_PLL_CTL0_CLKR_SHIFT;
+		reg |= (plldivs.clkod - 1) << CMU_PLL_CTL0_CLKOD_SHIFT;
 
-	INFO("%s <- %llu Hz, clkod:0x%x clkr:0x%x clkfhi:0x%x clkflo:0x%x\n",
-	     cmu->name, fpllreq,
-	     plldivs.clkod, plldivs.clkr, plldivs.clkfhi, plldivs.clkflo);
-
-	mmio_write_32(cmu->base + CMU_PLL_CTL1_REG, plldivs.clkflo);
-	mmio_write_32(cmu->base + CMU_PLL_CTL2_REG, plldivs.clkfhi);
+		mmio_write_32(cmu->base + CMU_PLL_CTL0_REG, reg);
+		mmio_write_32(cmu->base + CMU_PLL_CTL1_REG, 0);
+		mmio_write_32(cmu->base + CMU_PLL_CTL2_REG, plldivs.clkfhi);
+		cmu->fpllreq = (frefclk * plldivs.clkfhi) / plldivs.clkr / plldivs.clkod;
+	}
 }
 
 static struct cmu_desc *const cmu_desc_get_by_base(const uintptr_t base)
@@ -343,7 +419,7 @@ void cmu_pll_on(const uintptr_t base, const cmu_pll_ctl_vals_t *const pllinit)
 int64_t cmu_pll_get_rate(const uintptr_t base, uint64_t frefclk)
 {
 	uint64_t fpll;
-	const struct cmu_desc *const cmu = cmu_desc_get_by_base(base);
+	struct cmu_desc *cmu = cmu_desc_get_by_base(base);
 	struct plldivs plldivs;
 
 	if (!cmu) {
@@ -354,8 +430,19 @@ int64_t cmu_pll_get_rate(const uintptr_t base, uint64_t frefclk)
 		frefclk = cmu->frefclk;
 	}
 
+	if (frefclk != cmu->frefclk)
+		WARN("%s: CMU-ID %lx: frefclk %u != cmu frefclk %u\n",
+			__func__, cmu->base, (uint32_t)frefclk,
+			(uint32_t) cmu->frefclk);
+
 	cmu_read_plldivs(base, &plldivs);
 	fpll = cmu_calc_fpll(frefclk, &plldivs);
+
+	if (fpll != cmu->fpllreq) {
+		WARN("%s: %s: current_freq (%u) different from actual (%llu)\n",
+			__func__, cmu->name, (uint32_t)cmu->fpllreq, fpll);
+		cmu->fpllreq = fpll;
+	}
 
 	INFO("%s -> %llu Hz, clkod:0x%x clkr:0x%x clkfhi:0x%x clkflo:0x%x\n",
 	     cmu->name, fpll,
@@ -364,9 +451,9 @@ int64_t cmu_pll_get_rate(const uintptr_t base, uint64_t frefclk)
 	return fpll;
 }
 
-static int cmu_runtime_set_periph_rate(const struct cmu_desc *const cmu,
+static int cmu_runtime_set_periph_rate(struct cmu_desc *cmu,
 				       uint64_t frefclk,
-				       const uint64_t fpllreq)
+				       uint64_t fpllreq)
 {
 	int err;
 
@@ -376,6 +463,11 @@ static int cmu_runtime_set_periph_rate(const struct cmu_desc *const cmu,
 	if (!frefclk) {
 		frefclk = cmu->frefclk;
 	}
+
+	if (frefclk != cmu->frefclk)
+		WARN("%s: CMU-ID %lx: frefclk %u != cmu frefclk %u\n",
+			__func__, cmu->base, (uint32_t)frefclk,
+			(uint32_t) cmu->frefclk);
 
 	mmio_clrbits_32(cmu->base + CMU_PLL_CTL6_REG, CMU_PLL_CTL6_SWEN);
 	cmu_set_clkf(cmu, frefclk, fpllreq);
@@ -396,7 +488,6 @@ int64_t cmu_pll_round_rate(const uintptr_t base,
 {
 	const struct cmu_desc *const cmu = cmu_desc_get_by_base(base);
 	struct plldivs plldivs;
-	uint64_t fpll;
 
 	if (!cmu) {
 		return -ENXIO;
@@ -414,20 +505,23 @@ int64_t cmu_pll_round_rate(const uintptr_t base,
 		frefclk = cmu->frefclk;
 	}
 
-	cmu_read_plldivs(base, &plldivs);
-	cmu_calc_clkf(frefclk, fpllreq, &plldivs);
-	fpll = cmu_calc_fpll(frefclk, &plldivs);
-
-	if (fpll % VCO_REF <= VCO_REF / 2) {
-		return (fpll / VCO_REF) * VCO_REF;
+	if (frefclk != cmu->frefclk)
+		WARN("%s: CMU-ID %lx: frefclk %u != cmu frefclk %u\n",
+			__func__, base, (uint32_t)frefclk, (uint32_t) cmu->frefclk);
+	if (cmu_is_mmca57(base)) {
+		plldivs.clkod = 1;
+		plldivs.clkr = 1;
+		plldivs.clkfhi = ((fpllreq + frefclk / 2) / frefclk) << 1;
 	} else {
-		return (fpll / VCO_REF) * VCO_REF + VCO_REF;
+		cmu_calc_clkf(frefclk, fpllreq, &plldivs);
 	}
+
+	return (frefclk * plldivs.clkfhi / 2) / plldivs.clkr / plldivs.clkod;
 }
 
-static int cmu_runtime_set_core_rate(const struct cmu_desc *const cmu,
-				     const uint64_t frefclk,
-				     const uint64_t fpllreq)
+static int cmu_runtime_set_core_rate(struct cmu_desc *cmu,
+				     uint64_t frefclk,
+				     uint64_t fpllreq)
 {
 	int delta;
 	int64_t fpll;
@@ -450,9 +544,9 @@ static int cmu_runtime_set_core_rate(const struct cmu_desc *const cmu,
 	return 0;
 }
 
-static int cmu_runtime_set_rate(const struct cmu_desc *const cmu,
-				const uint64_t frefclk,
-				const uint64_t fpllreq)
+static int cmu_runtime_set_rate(struct cmu_desc *cmu,
+				uint64_t frefclk,
+				uint64_t fpllreq)
 {
 	assert(cmu);
 	assert(cmu->base);
@@ -485,7 +579,6 @@ int cmu_pll_set_rate(const uintptr_t base,
 		frefclk = cmu->frefclk;
 	}
 
-	cmu->fpllreq = fpllreq;
 	if (fpllreq == cmu_pll_get_rate(base, frefclk)) {
 		INFO("%s: %s(): already set to %u Hz\n", cmu->name, __func__,
 		     cmu->fpllreq);
@@ -757,11 +850,9 @@ int cmu_clkch_set_rate(const uintptr_t base,
 	return 0;
 }
 
-void cmu_pll_reconf_nr(const struct cmu_desc *const cmu)
+void cmu_pll_reconf_nr(struct cmu_desc *cmu)
 {
-	uint32_t clkr;
 	int err;
-	uint32_t reg;
 
 	assert(cmu);
 	assert(cmu->base);
@@ -773,27 +864,8 @@ void cmu_pll_reconf_nr(const struct cmu_desc *const cmu)
 		return;
 	}
 
-	/* Maximum allowed CLKR is 4095 */
-	clkr = cmu->frefclk / VCO_REF - 1;
-	if (clkr > 4095) {
-		/* This condition would unlikely occur (Fref > 256 MHz) */
-		clkr = cmu->frefclk / VCO_REF - 1;
-	}
-
-	reg = mmio_read_32(cmu->base + CMU_PLL_CTL0_REG);
-	reg &= CMU_PLL_CTL0_CLKR_MASK;
-	reg >>= CMU_PLL_CTL0_CLKR_SHIFT;
-	if (reg == clkr) {
-		INFO("%s: %s(): requested clkr (0x%x) is already set\n",
-		     cmu->name, __func__, reg + 1);
-		return;
-	}
-
 	mmio_clrbits_32(cmu->base + CMU_PLL_CTL6_REG, CMU_PLL_CTL6_SWEN);
 	mmio_clrbits_32(cmu->base + CMU_PLL_CTL0_REG, CMU_PLL_CTL0_CLKR_MASK);
-	mmio_clrsetbits_32(cmu->base + CMU_PLL_CTL0_REG,
-			   CMU_PLL_CTL0_CLKR_MASK,
-			   clkr << CMU_PLL_CTL0_CLKR_SHIFT);
 
 	INFO("%s: %s(): %u Hz\n", cmu->name, __func__, cmu->fpllreq);
 	cmu_set_clkf(cmu, cmu->frefclk, cmu->fpllreq);

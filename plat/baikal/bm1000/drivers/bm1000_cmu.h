@@ -46,7 +46,7 @@ int	cmu_pll_disable	  (const uintptr_t base);
 int	cmu_pll_enable	  (const uintptr_t base);
 int	cmu_pll_is_enabled(const uintptr_t base);
 void	cmu_pll_on	  (const uintptr_t base, const cmu_pll_ctl_vals_t *const pllinit);
-void	cmu_pll_reconf_nr (const struct cmu_desc *const cmu);
+void	cmu_pll_reconf_nr (struct cmu_desc *cmu);
 int64_t	cmu_pll_round_rate(const uintptr_t base, uint64_t frefclk, const uint64_t fpllreq);
 
 /* Clock channel functions */
