@@ -124,7 +124,14 @@ void mmpcie_init(void)
 
 	/* TODO: security open LCRU GPR reg */
 	mmio_write_32(MMPCIE_LCRU_GPR_S(0), 0x001f1f1f);
+#ifdef NOT_YET
 	mmio_write_32(MMPCIE_LCRU_GPR_S(4), 0x01501501);
+#else
+	/* Preserve compatibility with older kernel versions which
+	 * access "MSI_TRANS" registers.
+	 */
+	mmio_write_32(MMPCIE_LCRU_GPR_S(4), 0x45501501);
+#endif
 }
 
 void mmpcie_ns_access(void)
