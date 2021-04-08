@@ -107,7 +107,7 @@ static const cmu_pll_ctl_vals_t mmxgbe_lcru_pll_init  = { 0, 0,    0x64, 0,     
 #if 0
 static const cmu_pll_ctl_vals_t mmxgbe_lcru_pll1_init = { 0, 0,    0x1,  0xdddddddd, 0, 0x2c, 0, 0x2c }; /*  25.200 MHz */
 #endif
-static const cmu_pll_ctl_vals_t mmxgbe_lcru_pll1_init = { 0, 0x6b, 0xca, 0,          0, 0x2c, 0, 0x2c }; /*  25.250 MHz */
+static const cmu_pll_ctl_vals_t mmxgbe_lcru_pll1_init = { 0x23, 0x2, 0xca, 0,          0, 0x2c, 0, 0x2c }; /*  25.250 MHz */
 #if 0
 static const cmu_pll_ctl_vals_t mmxgbe_lcru_pll1_init = { 0, 0,    0x2,  0xf684bda1, 0, 0x2c, 0, 0x2c }; /*  40.000 MHz */
 static const cmu_pll_ctl_vals_t mmxgbe_lcru_pll1_init = { 0, 0,    0x4,  0xd097b425, 0, 0x2c, 0, 0x2c }; /*  65.000 MHz */
