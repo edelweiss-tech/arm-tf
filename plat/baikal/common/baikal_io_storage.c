@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020, Baikal Electronics JSC. All rights reserved.
+ * Copyright (c) 2018-2021, Baikal Electronics, JSC. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -13,6 +13,7 @@
 #include <drivers/io/io_fip.h>
 #include <drivers/io/io_memmap.h>
 #include <drivers/io/io_storage.h>
+#include <lib/utils_def.h>
 #include <platform_def.h>
 #include <spi_dw.h>
 #include <string.h>
@@ -218,7 +219,7 @@ static int read_fip_from_flash(uintptr_t local_image_handle, uint32_t offset)
 		result = -ENOENT;
 	}
 
-	result = dw_spi_read (0, 0, src, addr, sizeof(fip_toc_header_t));
+	result = dw_spi_read(0, 0, src, addr, sizeof(fip_toc_header_t));
 	flush_dcache_range((uintptr_t)addr, sizeof(fip_toc_header_t));
 	if (result != 0) {
 		WARN("dw_spi_read: Failed to read fip header\n");
@@ -228,7 +229,7 @@ static int read_fip_from_flash(uintptr_t local_image_handle, uint32_t offset)
 	addr += sizeof(fip_toc_header_t);
 
 	do {
-		result = dw_spi_read (0, 0, src, addr, sizeof(fip_toc_entry_t));
+		result = dw_spi_read(0, 0, src, addr, sizeof(fip_toc_entry_t));
 		flush_dcache_range((uintptr_t)addr, sizeof(fip_toc_entry_t));
 		if (result != 0) {
 			WARN("dw_spi_read: Failed to read fip file header\n");
@@ -249,7 +250,7 @@ static int read_fip_from_flash(uintptr_t local_image_handle, uint32_t offset)
 
 	} while (compare_uuids(&entry.uuid, &uuid_null) != 0);
 
-	result = dw_spi_read (0, 0, src, addr, size);
+	result = dw_spi_read(0, 0, src, addr, size);
 	flush_dcache_range((uintptr_t)addr, size);
 	if (result != 0) {
 		WARN("dw_spi_read: Failed to read fip\n");
@@ -266,7 +267,7 @@ static int read_fdt_from_flash(uintptr_t local_image_handle, uint32_t offset)
 	int result;
 
 	/* Read FIP Header part */
-	result = dw_spi_read (0, 0, src, addr, 0x10000); // 64k for FDT
+	result = dw_spi_read(0, 0, src, addr, 0x10000); /* 64 KiB for FDT */
 	flush_dcache_range((uintptr_t)addr, 0x10000);
 	if (result != 0) {
 		WARN("dw_spi_read: Failed to read fdt\n");

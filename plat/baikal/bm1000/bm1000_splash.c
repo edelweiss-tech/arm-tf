@@ -1,22 +1,22 @@
-/** @file  baikal_splash.c
-
- Copyright (C) 2020 Baikal Electronics JSC
-
- Author: Pavel Parkhomenko <Pavel.Parkhomenko@baikalelectronics.ru>
-
- **/
+/*
+ * Copyright (c) 2020-2021, Baikal Electronics, JSC. All rights reserved.
+ *
+ * Author: Pavel Parkhomenko <pavel.parkhomenko@baikalelectronics.ru>
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
 
 #include <arch_helpers.h>
-#include <assert.h>
+#include <baikal_gpio32.h>
+#include <common/debug.h>
+#include <drivers/delay_timer.h>
 #include <lib/mmio.h>
 #include <libfdt.h>
 #include <platform_def.h>
-#include <string.h>
 #include "bm1000_hdmi.h"
+#include "bm1000_private.h"
 #include "bm1000_splash.h"
 #include "bm1000_vdu.h"
-#include "bm1000_private.h"
-#include "bm1000_gpio.h"
 
 modeline_t default_lvds_video_mode = {148500000, 2, BAIKAL_LVDS_VESA_24,
 	1920, 88, 44, 148, 1080, 4, 5, 36};
@@ -135,7 +135,6 @@ void vdu_set_fb(uint64_t vdu_base, uint32_t fb_base, modeline_t *mode, int fb_cp
 	mmio_write_32(vdu_base + BAIKAL_VDU_REG_DBAR, fb_base);
 	mmio_write_32(vdu_base + BAIKAL_VDU_REG_MRR, fb_end);
 	mmio_write_32(vdu_base + BAIKAL_VDU_REG_CR1, ctl);
-
 }
 
 void vdu_init(uint64_t vdu_base, uint32_t fb_base, modeline_t *mode)
@@ -204,7 +203,7 @@ void vdu_init(uint64_t vdu_base, uint32_t fb_base, modeline_t *mode)
 
 	// Reset pixel clock domain
 	mmio_write_32(vdu_base + BAIKAL_VDU_REG_PCTR, BAIKAL_VDU_PCTR_PCI);
-	WAIT_DELAY(1, 5000000, );
+	mdelay(5);
 	mmio_write_32(vdu_base + BAIKAL_VDU_REG_PCTR, BAIKAL_VDU_PCTR_PCR + BAIKAL_VDU_PCTR_PCI);
 
 	// Turn VDU on
@@ -227,23 +226,21 @@ void vdu_init(uint64_t vdu_base, uint32_t fb_base, modeline_t *mode)
 		mmio_write_32(vdu_base + BAIKAL_VDU_REG_GPIOR, val);
 	}
 
-#ifdef BE_MITX
-	gpio_config_pin(17);
-	gpio_set_pin(17);
-	
-	gpio_config_pin(18);
-	gpio_set_pin(18);
+#ifdef BE_MBM10
+	gpio32_dir_set(17);
+	gpio32_out_set(17);
 
-	gpio_config_pin(19);
-	gpio_set_pin(19);
-	int timeout = 1000000;
-	while (timeout--);
-	gpio_clear_pin(19);
+	gpio32_dir_set(18);
+	gpio32_out_set(18);
+
+	gpio32_dir_set(19);
+	gpio32_out_set(19);
+	mdelay(10);
+	gpio32_out_rst(19);
 #endif
-
 }
 
-void hdmi_phy_power_on()
+void hdmi_phy_power_on(void)
 {
 	uint32_t i, val;
 	val = mmio_read_32(BAIKAL_HDMI_PHY_CONF0);
@@ -256,13 +253,12 @@ void hdmi_phy_power_on()
 		val = mmio_read_32(BAIKAL_HDMI_PHY_STAT0) & BAIKAL_HDMI_PHY_TX_PHY_LOCK;
 		if (val)
 			break;
-		// TODO it must be 1 ms delay below
-		val = 1000000;
-		while (val--);
+
+		mdelay(1);
 	}
 }
 
-void hdmi_phy_configure()
+void hdmi_phy_configure(void)
 {
 	uint32_t val;
 
@@ -443,9 +439,9 @@ void hdmi_early_splash(uint8_t *bmp_file)
 {
 	int fb_cpp;
 
-#ifdef BE_MITX
-	gpio_config_pin(18);
-	gpio_set_pin(18);
+#ifdef BE_MBM10
+	gpio32_dir_set(18);
+	gpio32_out_set(18);
 #endif
 
 	hdmi_init_av_composer(&hdmi_video_mode);

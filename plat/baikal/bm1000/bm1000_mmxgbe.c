@@ -1,306 +1,256 @@
 /*
- * Copyright (c) 2018-2020, Baikal Electronics JSC. All rights reserved.
+ * Copyright (c) 2018-2021, Baikal Electronics, JSC. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include <arch_helpers.h>
-#include <assert.h>
-#include <bm1000_gpio.h>
+#include <baikal_gpio32.h>
+#include <bm1000_cmu.h>
 #include <bm1000_private.h>
-#include <drivers/arm/gicv3.h>
-#include <drivers/console.h>
+#include <drivers/delay_timer.h>
 #include <lib/mmio.h>
-#include <plat/arm/common/plat_arm.h>
-#include <plat/common/platform.h>
 #include <platform_def.h>
 #include "bm1000_macaddr.h"
 
-/* Clock channels */
+#define MMXGBE_LCRU	0x30000000
 
-#define MMXGBE_LCRU 0x30000000
-#define MMXGBE_ASYNCRES_REG			(MMXGBE_LCRU + LCRU_GPR + 0)
-#define MMXGBE_ASYNCRES_REG_HDMI_PWRON_RES	CTL_BIT(12)
-#define MMXGBE_ASYNCRES_REG_XGBE1_PWRON_RES	CTL_BIT(8)
-#define MMXGBE_ASYNCRES_REG_XGBE0_PWRON_RES     CTL_BIT(4)
-#define MMXGBE_ASYNCRES_REG_DMA_NICM_RES        CTL_BIT(3)
-#define MMXGBE_ASYNCRES_REG_DMA_NICS_RES        CTL_BIT(2)
-#define MMXGBE_ASYNCRES_REG_CFG_NICM_RES        CTL_BIT(1)
-#define MMXGBE_ASYNCRES_REG_CFG_NICS_RES        CTL_BIT(0)
+#define MMXGBE_ASYNCRES_REG			(MMXGBE_LCRU + LCRU_GPR + 0x00)
+enum {
+	MMXGBE_ASYNCRES_REG_CFG_NICS_RES    = BIT(0),
+	MMXGBE_ASYNCRES_REG_CFG_NICM_RES    = BIT(1),
+	MMXGBE_ASYNCRES_REG_DMA_NICS_RES    = BIT(2),
+	MMXGBE_ASYNCRES_REG_DMA_NICM_RES    = BIT(3),
+	MMXGBE_ASYNCRES_REG_XGBE0_PWRON_RES = BIT(4),
+	MMXGBE_ASYNCRES_REG_XGBE1_PWRON_RES = BIT(8),
+	MMXGBE_ASYNCRES_REG_HDMI_PWRON_RES  = BIT(12)
+};
 
 #define MMXGBE_GMAC0_PROT_CTL_REG		(MMXGBE_LCRU + LCRU_GPR + 0x18)
 #define MMXGBE_GMAC1_PROT_CTL_REG		(MMXGBE_LCRU + LCRU_GPR + 0x20)
-#define MMXGBE_GMAC_PROT_CTL_REG_AWPROT_MASK	CTL_BIT_MASK(2,0)
-#define MMXGBE_GMAC_PROT_CTL_REG_AWPROT(x)	CTL_BIT_SET(x, 2,0)
-#define MMXGBE_GMAC_PROT_CTL_REG_ARPROT_MASK	CTL_BIT_MASK(5,3)
-#define MMXGBE_GMAC_PROT_CTL_REG_ARPROT(x)	CTL_BIT_SET(x, 5,3)
+#define MMXGBE_GMAC_PROT_CTL_REG_AWPROT_MASK	GENMASK(   2, 0)
+#define MMXGBE_GMAC_PROT_CTL_REG_AWPROT(x)	SETMASK(x, 2, 0)
+#define MMXGBE_GMAC_PROT_CTL_REG_ARPROT_MASK	GENMASK(   5, 3)
+#define MMXGBE_GMAC_PROT_CTL_REG_ARPROT(x)	SETMASK(x, 5, 3)
 
 #define MMXGBE_GMAC0_CACHE_CTL_REG		(MMXGBE_LCRU + LCRU_GPR + 0x90)
 #define MMXGBE_GMAC1_CACHE_CTL_REG		(MMXGBE_LCRU + LCRU_GPR + 0x98)
-#define MMXGBE_GMAC_CACHE_CTL_REG_ARCACHE(x)	CTL_BIT_SET(x, 3,0)
-#define MMXGBE_GMAC_CACHE_CTL_REG_ARDOMAIN(x)	CTL_BIT_SET(x, 9,8)
-#define MMXGBE_GMAC_CACHE_CTL_REG_AWCACHE(x)	CTL_BIT_SET(x, 19,16)
-#define MMXGBE_GMAC_CACHE_CTL_REG_AWDOMAIN(x)	CTL_BIT_SET(x, 25,24)
+#define MMXGBE_GMAC_CACHE_CTL_REG_ARCACHE(x)	SETMASK(x,  3,  0)
+#define MMXGBE_GMAC_CACHE_CTL_REG_ARDOMAIN(x)	SETMASK(x,  9,  8)
+#define MMXGBE_GMAC_CACHE_CTL_REG_AWCACHE(x)	SETMASK(x, 19, 16)
+#define MMXGBE_GMAC_CACHE_CTL_REG_AWDOMAIN(x)	SETMASK(x, 25, 24)
 
 #define MMXGBE_XGBE0_PROT_CTL_REG		(MMXGBE_LCRU + LCRU_GPR + 0x08)
-#define MMXGBE_XGBE0_PROT_CTL_REG_AWPROT_MASK	CTL_BIT_MASK(2,0)
-#define MMXGBE_XGBE0_PROT_CTL_REG_AWPROT(x)	CTL_BIT_SET(x, 2,0)
-#define MMXGBE_XGBE0_PROT_CTL_REG_ARPROT_MASK	CTL_BIT_MASK(5,3)
-#define MMXGBE_XGBE0_PROT_CTL_REG_ARPROT(x)	CTL_BIT_SET(x, 5,3)
+#define MMXGBE_XGBE0_PROT_CTL_REG_AWPROT_MASK	GENMASK(   2, 0)
+#define MMXGBE_XGBE0_PROT_CTL_REG_AWPROT(x)	SETMASK(x, 2, 0)
+#define MMXGBE_XGBE0_PROT_CTL_REG_ARPROT_MASK	GENMASK(   5, 3)
+#define MMXGBE_XGBE0_PROT_CTL_REG_ARPROT(x)	SETMASK(x, 5, 3)
 
 #define MMXGBE_XGBE1_PROT_CTL_REG		(MMXGBE_LCRU + LCRU_GPR + 0x10)
-#define MMXGBE_XGBE1_PROT_CTL_REG_AWPROT_MASK	CTL_BIT_MASK(2,0)
-#define MMXGBE_XGBE1_PROT_CTL_REG_AWPROT(x)	CTL_BIT_SET(x, 2,0)
-#define MMXGBE_XGBE1_PROT_CTL_REG_ARPROT_MASK	CTL_BIT_MASK(5,3)
-#define MMXGBE_XGBE1_PROT_CTL_REG_ARPROT(x)	CTL_BIT_SET(x, 5,3)
+#define MMXGBE_XGBE1_PROT_CTL_REG_AWPROT_MASK	GENMASK(   2, 0)
+#define MMXGBE_XGBE1_PROT_CTL_REG_AWPROT(x)	SETMASK(x, 2, 0)
+#define MMXGBE_XGBE1_PROT_CTL_REG_ARPROT_MASK	GENMASK(   5, 3)
+#define MMXGBE_XGBE1_PROT_CTL_REG_ARPROT(x)	SETMASK(x, 5, 3)
 
 #define MMXGBE_HDMI_VIDEO_PROT_CTL_REG		(MMXGBE_LCRU + LCRU_GPR + 0x28)
-#define MMXGBE_HDMI_VIDEO_PROT_CTL_REG_ARPROT(x)	CTL_BIT_SET(x, 5,3)
-#define MMXGBE_HDMI_VIDEO_PROT_CTL_REG_ARPROT_MASK	CTL_BIT_SET(x, 5,3)
+#define MMXGBE_HDMI_VIDEO_PROT_CTL_REG_ARPROT(x)	SETMASK(x, 5, 3)
+#define MMXGBE_HDMI_VIDEO_PROT_CTL_REG_ARPROT_MASK	SETMASK(x, 5, 3)
+
 #define MMXGBE_HDMI_VIDEO_QOS_CTL_REG		(MMXGBE_LCRU + LCRU_GPR + 0x78)
-#define MMXGBE_HDMI_VIDEO_QOS_CTL_REG_ARQOS(x)		CTL_BIT_SET(x, 7, 4)
-#define MMXGBE_HDMI_VIDEO_CACHE_CTL_REG		(MMXGBE_LCRU + LCRU_GPR + 0xA0)
-#define MMXGBE_HDMI_VIDEO_CACHE_CTL_REG_ARCACHE(x)	CTL_BIT_SET(x, 3,0)
-#define MMXGBE_HDMI_VIDEO_CACHE_CTL_REG_ARDOMAIN(x)	CTL_BIT_SET(x, 9,8)
+#define MMXGBE_HDMI_VIDEO_QOS_CTL_REG_ARQOS(x)		SETMASK(x, 7, 4)
+
+#define MMXGBE_HDMI_VIDEO_CACHE_CTL_REG		(MMXGBE_LCRU + LCRU_GPR + 0xa0)
+#define MMXGBE_HDMI_VIDEO_CACHE_CTL_REG_ARCACHE(x)	SETMASK(x, 3, 0)
+#define MMXGBE_HDMI_VIDEO_CACHE_CTL_REG_ARDOMAIN(x)	SETMASK(x, 9, 8)
 
 #define MMXGBE_HDMI_AUDIO_PROT_CTL_REG		(MMXGBE_LCRU + LCRU_GPR + 0x30)
-#define MMXGBE_HDMI_AUDIO_PROT_CTL_REG_ARPROT(x)	CTL_BIT_SET(x, 5,3)
-#define MMXGBE_HDMI_AUDIO_PROT_CTL_REG_ARPROT_MASK	CTL_BIT_SET(x, 5,3)
-#define MMXGBE_HDMI_AUDIO_QOS_CTL_REG          (MMXGBE_LCRU + LCRU_GPR + 0x80)
-#define MMXGBE_HDMI_AUDIO_QOS_CTL_REG_ARQOS(x)         CTL_BIT_SET(x, 7, 4)
-#define MMXGBE_HDMI_AUDIO_CACHE_CTL_REG		(MMXGBE_LCRU + LCRU_GPR + 0xA8)
-#define MMXGBE_HDMI_AUDIO_CACHE_CTL_REG_ARCACHE(x)	CTL_BIT_SET(x, 3,0)
-#define MMXGBE_HDMI_AUDIO_CACHE_CTL_REG_ARDOMAIN(x)	CTL_BIT_SET(x, 9,8)
+#define MMXGBE_HDMI_AUDIO_PROT_CTL_REG_ARPROT(x)	SETMASK(x, 5, 3)
+#define MMXGBE_HDMI_AUDIO_PROT_CTL_REG_ARPROT_MASK	SETMASK(x, 5, 3)
+
+#define MMXGBE_HDMI_AUDIO_QOS_CTL_REG		(MMXGBE_LCRU + LCRU_GPR + 0x80)
+#define MMXGBE_HDMI_AUDIO_QOS_CTL_REG_ARQOS(x)		SETMASK(x, 7, 4)
+
+#define MMXGBE_HDMI_AUDIO_CACHE_CTL_REG		(MMXGBE_LCRU + LCRU_GPR + 0xa8)
+#define MMXGBE_HDMI_AUDIO_CACHE_CTL_REG_ARCACHE(x)	SETMASK(x, 3, 0)
+#define MMXGBE_HDMI_AUDIO_CACHE_CTL_REG_ARDOMAIN(x)	SETMASK(x, 9, 8)
+
+enum {
+	MMXGBE_CLKCH_CSR0	     = MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(0),
+	MMXGBE_CLKCH_CSR1	     = MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(1),
+	MMXGBE_CLKCH_XGBE0_REF	     = MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(2),
+	MMXGBE_CLKCH_XGBE0_ACLK	     = MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(3),
+	MMXGBE_CLKCH_XGBE0_PTP	     = MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(4),
+	MMXGBE_CLKCH_XGBE1_REF	     = MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(5),
+	MMXGBE_CLKCH_XGBE1_ACLK	     = MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(6),
+	MMXGBE_CLKCH_XGBE1_PTP	     = MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(7),
+	MMXGBE_CLKCH_GMAC0_ACLK	     = MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(8),
+	MMXGBE_CLKCH_GMAC0_PTPCLK    = MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(9),
+	MMXGBE_CLKCH_GMAC0_TX2CLK    = MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(10),
+	MMXGBE_CLKCH_GMAC1_ACLK	     = MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(11),
+	MMXGBE_CLKCH_GMAC1_PTPCLK    = MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(12),
+	MMXGBE_CLKCH_GMAC1_TX2CLK    = MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(13),
+	MMXGBE_CLKCH_MMU	     = MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(14),
+	MMXGBE_CLKCH_HDMI_VIDEO_ACLK = MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(15),
+	MMXGBE_CLKCH_HDMI_AUDIO_ACLK = MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(16),
+	MMXGBE_CLKCH_HDMI_SFR0	     = MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(17),
+	MMXGBE_CLKCH_HDMI_SFR1	     = MMXGBE_LCRU + LCRU_CMU1 + LCRU_CLKCH_OFFSET(0)
+};
 
 #define GMAC0_BASE	0x30240000
 #define GMAC1_BASE	0x30250000
-#define GMAC_MACADDR0HI 0x40
-#define GMAC_MACADDR0LO 0x44
-#define GMAC_GPIO	0xe0
+#define GMAC_MACADDR0HI	0x40
+#define GMAC_MACADDR0LO	0x44
 
 #define MMXGBE_HDMI_LCRU_PLL1_RESET_GPIO_PIN	18
 
-static const PllCtlInitValues MMXGBE_LCRU_PLL_INIT = { 0, 0, 0x64, 0x00,   0x00, 0x2c, 0x00, 0x2c };
-//static const PllCtlInitValues MMXGBE_LCRU_PLL1_INIT = { 0, 0, 0x1, 0xdddddddd,   0x00, 0x2c, 0x00, 0x2c }; // 25.2 MHz
-static const PllCtlInitValues MMXGBE_LCRU_PLL1_INIT = { 0, 0x6b, 0xca, 0,   0x00, 0x2c, 0x00, 0x2c }; // 25.25 MHz
-//static const PllCtlInitValues MMXGBE_LCRU_PLL1_INIT = { 0, 0, 0x2, 0xf684bda1,   0x00, 0x2c, 0x00, 0x2c }; // 40 MHz
-//static const PllCtlInitValues MMXGBE_LCRU_PLL1_INIT = { 0, 0, 0x4, 0xd097b425,   0x00, 0x2c, 0x00, 0x2c }; // 65 MHz
-//static const PllCtlInitValues MMXGBE_LCRU_PLL1_INIT = { 0, 0, 0x5, 0x80000000,   0x00, 0x2c, 0x00, 0x2c }; // 74.25 MHz
-//static const PllCtlInitValues MMXGBE_LCRU_PLL1_INIT = { 0, 0, 0x8, 0x00000000,   0x00, 0x2c, 0x00, 0x2c }; // 108 MHz
-//static const PllCtlInitValues MMXGBE_LCRU_PLL1_INIT = { 0, 0, 0xb, 0x00000000,   0x00, 0x2c, 0x00, 0x2c }; // 148.5 MHz
-//static const PllCtlInitValues MMXGBE_LCRU_PLL1_INIT = { 0, 0, 0xe, 0x4ec0d0be,   0x00, 0x2c, 0x00, 0x2c }; // 193.153 MHz
-//static const PllCtlInitValues MMXGBE_LCRU_PLL1_INIT = { 0, 0, 0x11, 0xe38e38e3,   0x00, 0x2c, 0x00, 0x2c }; // 241.5 MHz
-//static const PllCtlInitValues MMXGBE_LCRU_PLL1_INIT = { 0, 0, 0x13, 0xe38e38e3,   0x00, 0x2c, 0x00, 0x2c }; // 268.5 MHz
-//static const PllCtlInitValues MMXGBE_LCRU_PLL1_INIT = { 0, 0, 0x1a, 0x05a1cac0,   0x00, 0x2c, 0x00, 0x2c }; // 351.297 MHz
+static const cmu_pll_ctl_vals_t mmxgbe_lcru_pll_init  = { 0, 0,    0x64, 0,          0, 0x2c, 0, 0x2c };
 
-void mmxgbe_on(void)
-{
-	uint8_t  macaddr[6];
-	uint32_t mmxgbe_gpr0;
-
-	mmxgbe_gpr0 = mmio_read_32(MMXGBE_ASYNCRES_REG);
-	mmxgbe_gpr0 &= ~( MMXGBE_ASYNCRES_REG_CFG_NICM_RES |
-			MMXGBE_ASYNCRES_REG_DMA_NICM_RES   |
-			MMXGBE_ASYNCRES_REG_CFG_NICS_RES   |
-			MMXGBE_ASYNCRES_REG_DMA_NICS_RES
-			);
-	mmio_write_32(MMXGBE_ASYNCRES_REG, mmxgbe_gpr0);
-
-#ifdef BE_MITX
-	gpio_config_pin(MMXGBE_HDMI_LCRU_PLL1_RESET_GPIO_PIN);
-	gpio_clear_pin(MMXGBE_HDMI_LCRU_PLL1_RESET_GPIO_PIN);
-	int timeout = 1000000;
-	while (timeout--);
-	gpio_set_pin(MMXGBE_HDMI_LCRU_PLL1_RESET_GPIO_PIN);
+#if 0
+static const cmu_pll_ctl_vals_t mmxgbe_lcru_pll1_init = { 0, 0,    0x1,  0xdddddddd, 0, 0x2c, 0, 0x2c }; /*  25.200 MHz */
+#endif
+static const cmu_pll_ctl_vals_t mmxgbe_lcru_pll1_init = { 0, 0x6b, 0xca, 0,          0, 0x2c, 0, 0x2c }; /*  25.250 MHz */
+#if 0
+static const cmu_pll_ctl_vals_t mmxgbe_lcru_pll1_init = { 0, 0,    0x2,  0xf684bda1, 0, 0x2c, 0, 0x2c }; /*  40.000 MHz */
+static const cmu_pll_ctl_vals_t mmxgbe_lcru_pll1_init = { 0, 0,    0x4,  0xd097b425, 0, 0x2c, 0, 0x2c }; /*  65.000 MHz */
+static const cmu_pll_ctl_vals_t mmxgbe_lcru_pll1_init = { 0, 0,    0x5,  0x80000000, 0, 0x2c, 0, 0x2c }; /*  74.250 MHz */
+static const cmu_pll_ctl_vals_t mmxgbe_lcru_pll1_init = { 0, 0,    0x8,  0,          0, 0x2c, 0, 0x2c }; /* 108.000 MHz */
+static const cmu_pll_ctl_vals_t mmxgbe_lcru_pll1_init = { 0, 0,    0xb,  0,          0, 0x2c, 0, 0x2c }; /* 148.500 MHz */
+static const cmu_pll_ctl_vals_t mmxgbe_lcru_pll1_init = { 0, 0,    0xe,  0x4ec0d0be, 0, 0x2c, 0, 0x2c }; /* 193.153 MHz */
+static const cmu_pll_ctl_vals_t mmxgbe_lcru_pll1_init = { 0, 0,    0x11, 0xe38e38e3, 0, 0x2c, 0, 0x2c }; /* 241.500 MHz */
+static const cmu_pll_ctl_vals_t mmxgbe_lcru_pll1_init = { 0, 0,    0x13, 0xe38e38e3, 0, 0x2c, 0, 0x2c }; /* 268.500 MHz */
+static const cmu_pll_ctl_vals_t mmxgbe_lcru_pll1_init = { 0, 0,    0x1a, 0x5a1cac0,  0, 0x2c, 0, 0x2c }; /* 351.297 MHz */
 #endif
 
-	pll_on(MMXGBE_LCRU, &MMXGBE_LCRU_PLL_INIT, "XGBE_LCRU timeout!");
-	// Clock channels
-	// CSR
-	CLKCH_ENABLE(
-		MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(0),
-		25/* 50MHZ */,
-		1000000);
-	// CSR
-	CLKCH_ENABLE(
-		MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(1),
-		12/* 104MHZ */,
-		1000000);
+void mmxgbe_init(void)
+{
+	uint8_t macaddr[6];
 
-	// XGBE0_REF
-	CLKCH_ENABLE(
-		MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(2),
-		8/* 156MHZ */,
-		1000000);
-	// XGBE0_ACLK
-	CLKCH_ENABLE(
-		MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(3),
-		5/* 250MHZ */,
-		1000000);
-	// XGBE0_PTP
-	CLKCH_ENABLE(
-		MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(4),
-		8/* 156MHZ */,
-		1000000);
+	mmio_clrbits_32(MMXGBE_ASYNCRES_REG,
+			MMXGBE_ASYNCRES_REG_CFG_NICS_RES |
+			MMXGBE_ASYNCRES_REG_CFG_NICM_RES |
+			MMXGBE_ASYNCRES_REG_DMA_NICS_RES |
+			MMXGBE_ASYNCRES_REG_DMA_NICM_RES);
 
-	// XGBE1_REF
-	CLKCH_ENABLE(
-		MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(5),
-		8/* 156MHZ */,
-		1000000);
-	// XGBE1_ACLK
-	CLKCH_ENABLE(
-		MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(6),
-		5/* 250MHZ */,
-		1000000);
-	// XGBE1_PTP
-	CLKCH_ENABLE(
-		MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(7),
-		8/* 156MHZ */,
-		1000000);
+#if defined(BE_MBM10) || defined(BE_MBM10_2FLASH)
+	gpio32_dir_set(MMXGBE_HDMI_LCRU_PLL1_RESET_GPIO_PIN);
+	gpio32_out_rst(MMXGBE_HDMI_LCRU_PLL1_RESET_GPIO_PIN);
+	mdelay(10);
+	gpio32_out_set(MMXGBE_HDMI_LCRU_PLL1_RESET_GPIO_PIN);
+#endif
 
-	// GMAC0_ACLK
-	CLKCH_ENABLE(
-		MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(8),
-		5/* 250MHZ */,
-		1000000);
-	// GMAC0_PTPCLK
-	CLKCH_ENABLE(
-		MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(9),
-		10/* 125MHZ */,
-		1000000);
-	// GMAC0_TX2CLK
-	CLKCH_ENABLE(
-		MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(10),
-		5/* 250MHZ */,
-		1000000);
+	cmu_pll_on(MMXGBE_LCRU, &mmxgbe_lcru_pll_init);
+	cmu_clkch_enable_by_base(MMXGBE_CLKCH_CSR0,	       25); /*  50.0 MHz */
+	cmu_clkch_enable_by_base(MMXGBE_CLKCH_CSR1,	       12); /* 104.0 MHz */
+	cmu_clkch_enable_by_base(MMXGBE_CLKCH_XGBE0_REF,        8); /* 156.0 MHz */
+	cmu_clkch_enable_by_base(MMXGBE_CLKCH_XGBE0_ACLK,       5); /* 250.0 MHz */
+	cmu_clkch_enable_by_base(MMXGBE_CLKCH_XGBE0_PTP,        8); /* 156.0 MHz */
+	cmu_clkch_enable_by_base(MMXGBE_CLKCH_XGBE1_REF,        8); /* 156.0 MHz */
+	cmu_clkch_enable_by_base(MMXGBE_CLKCH_XGBE1_ACLK,       5); /* 250.0 MHz */
+	cmu_clkch_enable_by_base(MMXGBE_CLKCH_XGBE1_PTP,        8); /* 156.0 MHz */
+	cmu_clkch_enable_by_base(MMXGBE_CLKCH_GMAC0_ACLK,       5); /* 250.0 MHz */
+	cmu_clkch_enable_by_base(MMXGBE_CLKCH_GMAC0_PTPCLK,    10); /* 125.0 MHz */
+	cmu_clkch_enable_by_base(MMXGBE_CLKCH_GMAC0_TX2CLK,     5); /* 250.0 MHz */
+	cmu_clkch_enable_by_base(MMXGBE_CLKCH_GMAC1_ACLK,       5); /* 250.0 MHz */
+	cmu_clkch_enable_by_base(MMXGBE_CLKCH_GMAC1_PTPCLK,    10); /* 125.0 MHz */
+	cmu_clkch_enable_by_base(MMXGBE_CLKCH_GMAC1_TX2CLK,     5); /* 250.0 MHz */
+	cmu_clkch_enable_by_base(MMXGBE_CLKCH_MMU,	        4); /* 312.5 MHz */
+	cmu_clkch_enable_by_base(MMXGBE_CLKCH_HDMI_VIDEO_ACLK,  3); /* 416.7 MHz */
+	cmu_clkch_enable_by_base(MMXGBE_CLKCH_HDMI_AUDIO_ACLK, 10); /* 125.0 MHz */
+	cmu_clkch_enable_by_base(MMXGBE_CLKCH_HDMI_SFR0,       50); /*  25.0 MHz */
 
-	// GMAC1_ACLK
-	CLKCH_ENABLE(
-		MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(11),
-		5/* 250MHZ */,
-		1000000);
-	// GMAC1_PTPCLK
-	CLKCH_ENABLE(
-		MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(12),
-		10/* 125MHZ */,
-		1000000);
-	// GMAC1_TX2CLK
-	CLKCH_ENABLE(
-		MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(13),
-		5/* 250MHZ */,
-		1000000);
+	cmu_pll_on(MMXGBE_LCRU + LCRU_CMU1, &mmxgbe_lcru_pll1_init);
+	cmu_clkch_enable_by_base(MMXGBE_CLKCH_HDMI_SFR1,        1); /* 594.0 MHz */
 
-	// MMU
-	CLKCH_ENABLE(
-		MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(14),
-		4/* 312.5MHZ */,
-		1000000);
-	// HDMI_VIDEO_ACLK
-	CLKCH_ENABLE(
-		MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(15),
-		3/* 416.7MHZ */,
-		1000000);
-	// HDMI_AUDIO_ACLK
-	CLKCH_ENABLE(
-		MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(16),
-		10/* 125MHZ */,
-		1000000);
-	// HDMI_SFR
-	CLKCH_ENABLE(
-		MMXGBE_LCRU + LCRU_CMU0 + LCRU_CLKCH_OFFSET(17),
-		50/* 25MHZ */,
-		1000000);
+	/* Deassert XGMAC resets */
+	mmio_clrbits_32(MMXGBE_ASYNCRES_REG,
+			MMXGBE_ASYNCRES_REG_XGBE0_PWRON_RES |
+			MMXGBE_ASYNCRES_REG_XGBE1_PWRON_RES |
+			MMXGBE_ASYNCRES_REG_HDMI_PWRON_RES);
 
-	pll_on(MMXGBE_LCRU + LCRU_CMU1, &MMXGBE_LCRU_PLL1_INIT, "XGBE_LCRU1 timeout!");
+	/* GMAC - Domain 2, cached */
+	mmio_write_32(MMXGBE_GMAC0_CACHE_CTL_REG,
+		      MMXGBE_GMAC_CACHE_CTL_REG_ARDOMAIN(2)  |
+		      MMXGBE_GMAC_CACHE_CTL_REG_AWDOMAIN(2)  |
+		      MMXGBE_GMAC_CACHE_CTL_REG_ARCACHE(0xb) |
+		      MMXGBE_GMAC_CACHE_CTL_REG_AWCACHE(0x7));
 
-	// HDMI_SFR
-	CLKCH_ENABLE(
-		MMXGBE_LCRU + LCRU_CMU1 + LCRU_CLKCH_OFFSET(0),
-		1/* 594 */,
-		1000000);
+	mmio_write_32(MMXGBE_GMAC1_CACHE_CTL_REG,
+		      MMXGBE_GMAC_CACHE_CTL_REG_ARDOMAIN(2)  |
+		      MMXGBE_GMAC_CACHE_CTL_REG_AWDOMAIN(2)  |
+		      MMXGBE_GMAC_CACHE_CTL_REG_ARCACHE(0xb) |
+		      MMXGBE_GMAC_CACHE_CTL_REG_AWCACHE(0x7));
 
-	// XGMAC resets
-	mmxgbe_gpr0 = mmio_read_32(MMXGBE_ASYNCRES_REG);
-	mmxgbe_gpr0 &= ~(MMXGBE_ASYNCRES_REG_XGBE0_PWRON_RES);
-	mmxgbe_gpr0 &= ~(MMXGBE_ASYNCRES_REG_XGBE1_PWRON_RES);
-	mmxgbe_gpr0 &= ~(MMXGBE_ASYNCRES_REG_HDMI_PWRON_RES);
-	mmio_write_32(MMXGBE_ASYNCRES_REG, mmxgbe_gpr0);
+	/* VDU, HDMI */
+	mmio_write_32(MMXGBE_HDMI_VIDEO_CACHE_CTL_REG,
+		      MMXGBE_HDMI_VIDEO_CACHE_CTL_REG_ARDOMAIN(2) |
+		      MMXGBE_HDMI_VIDEO_CACHE_CTL_REG_ARCACHE(0xb));
 
-// GMAC - Domain 2, cached
-	mmio_write_32(  MMXGBE_GMAC0_CACHE_CTL_REG,
-			MMXGBE_GMAC_CACHE_CTL_REG_ARDOMAIN(2) |
-			MMXGBE_GMAC_CACHE_CTL_REG_AWDOMAIN(2) |
-			MMXGBE_GMAC_CACHE_CTL_REG_ARCACHE(0xb) |
-			MMXGBE_GMAC_CACHE_CTL_REG_AWCACHE(0x7)
-			);
-	mmio_write_32(  MMXGBE_GMAC1_CACHE_CTL_REG,
-			MMXGBE_GMAC_CACHE_CTL_REG_ARDOMAIN(2) |
-			MMXGBE_GMAC_CACHE_CTL_REG_AWDOMAIN(2) |
-			MMXGBE_GMAC_CACHE_CTL_REG_ARCACHE(0xb) |
-			MMXGBE_GMAC_CACHE_CTL_REG_AWCACHE(0x7)
-			);
+	mmio_write_32(MMXGBE_HDMI_VIDEO_QOS_CTL_REG,
+		      MMXGBE_HDMI_VIDEO_QOS_CTL_REG_ARQOS(0xf));
 
-// VDU, HDMI
-	mmio_write_32(  MMXGBE_HDMI_VIDEO_CACHE_CTL_REG,
-			MMXGBE_HDMI_VIDEO_CACHE_CTL_REG_ARDOMAIN(0x2) |
-			MMXGBE_HDMI_VIDEO_CACHE_CTL_REG_ARCACHE(0xb)
-			);
-	mmio_write_32(  MMXGBE_HDMI_VIDEO_QOS_CTL_REG,
-			MMXGBE_HDMI_VIDEO_QOS_CTL_REG_ARQOS(0xf)
-			);
-	mmio_write_32(  MMXGBE_HDMI_AUDIO_CACHE_CTL_REG,
-			MMXGBE_HDMI_AUDIO_CACHE_CTL_REG_ARDOMAIN(0x2) |
-			MMXGBE_HDMI_AUDIO_CACHE_CTL_REG_ARCACHE(0xb)
-			);
+	mmio_write_32(MMXGBE_HDMI_AUDIO_CACHE_CTL_REG,
+		      MMXGBE_HDMI_AUDIO_CACHE_CTL_REG_ARDOMAIN(2) |
+		      MMXGBE_HDMI_AUDIO_CACHE_CTL_REG_ARCACHE(0xb));
 
-        if (baikal_macaddr_get(BAIKAL_MACADDR_GMAC0, macaddr) == 0) {
-            mmio_write_32(GMAC0_BASE + GMAC_MACADDR0HI, macaddr[5] <<  8 | macaddr[4]);
-            mmio_write_32(GMAC0_BASE + GMAC_MACADDR0LO, macaddr[3] << 24 | macaddr[2] << 16 | macaddr[1] << 8 | macaddr[0]);
-        }
+	if (baikal_macaddr_get(BAIKAL_MACADDR_GMAC0, macaddr) == 0) {
+		mmio_write_32(GMAC0_BASE + GMAC_MACADDR0HI,
+			      macaddr[5] <<  8 |
+			      macaddr[4]);
 
-        if (baikal_macaddr_get(BAIKAL_MACADDR_GMAC1, macaddr) == 0) {
-            mmio_write_32(GMAC1_BASE + GMAC_MACADDR0HI, macaddr[5] <<  8 | macaddr[4]);
-            mmio_write_32(GMAC1_BASE + GMAC_MACADDR0LO, macaddr[3] << 24 | macaddr[2] << 16 | macaddr[1] << 8 | macaddr[0]);
-        }
+		mmio_write_32(GMAC0_BASE + GMAC_MACADDR0LO,
+			      macaddr[3] << 24 |
+			      macaddr[2] << 16 |
+			      macaddr[1] <<  8 |
+			      macaddr[0]);
+	}
 
-	// turn on phy
-//	mmio_write_32(GMAC0_BASE + GMAC_GPIO, 0x100);
-//	mmio_write_32(GMAC1_BASE + GMAC_GPIO, 0x100);
+	if (baikal_macaddr_get(BAIKAL_MACADDR_GMAC1, macaddr) == 0) {
+		mmio_write_32(GMAC1_BASE + GMAC_MACADDR0HI,
+			      macaddr[5] <<  8 |
+			      macaddr[4]);
 
-// SMMU
-//        reg = mmio_read_32(0x30080000);
-	//reg &= ~0x0f0000;
-//	reg =   0x3a5f0001;
-//	mmio_write_32(0x30080000, reg);
-
+		mmio_write_32(GMAC1_BASE + GMAC_MACADDR0LO,
+			      macaddr[3] << 24 |
+			      macaddr[2] << 16 |
+			      macaddr[1] <<  8 |
+			      macaddr[0]);
+	}
+#if 0
+	/* SMMU */
+	mmio_write_32(0x30080000, 0x3a5f0001);
+#endif
 }
 
-void mmxgbe_toNSW(void)
+void mmxgbe_ns_access(void)
 {
 	mmio_write_32(MMXGBE_GMAC0_PROT_CTL_REG,
-			MMXGBE_GMAC_PROT_CTL_REG_AWPROT(2) |
-			MMXGBE_GMAC_PROT_CTL_REG_ARPROT(2));
+		      MMXGBE_GMAC_PROT_CTL_REG_AWPROT(2) |
+		      MMXGBE_GMAC_PROT_CTL_REG_ARPROT(2));
+
 	mmio_write_32(MMXGBE_GMAC1_PROT_CTL_REG,
-			MMXGBE_GMAC_PROT_CTL_REG_AWPROT(2) |
-			MMXGBE_GMAC_PROT_CTL_REG_ARPROT(2));
+		      MMXGBE_GMAC_PROT_CTL_REG_AWPROT(2) |
+		      MMXGBE_GMAC_PROT_CTL_REG_ARPROT(2));
+
 	mmio_write_32(MMXGBE_XGBE0_PROT_CTL_REG,
-			MMXGBE_XGBE0_PROT_CTL_REG_AWPROT(2) |
-			MMXGBE_XGBE0_PROT_CTL_REG_ARPROT(2));
+		      MMXGBE_XGBE0_PROT_CTL_REG_AWPROT(2) |
+		      MMXGBE_XGBE0_PROT_CTL_REG_ARPROT(2));
+
 	mmio_write_32(MMXGBE_XGBE1_PROT_CTL_REG,
-			MMXGBE_XGBE1_PROT_CTL_REG_AWPROT(2) |
-			MMXGBE_XGBE1_PROT_CTL_REG_ARPROT(2));
-	mmio_write_32(  MMXGBE_HDMI_VIDEO_PROT_CTL_REG,
-			MMXGBE_HDMI_VIDEO_PROT_CTL_REG_ARPROT(2));
-	mmio_write_32(  MMXGBE_HDMI_AUDIO_PROT_CTL_REG,
-			MMXGBE_HDMI_AUDIO_PROT_CTL_REG_ARPROT(2));
-	SECURE_MODE(BAIKAL_NIC_XGB_TCU, SECURE_MODE_OFF);
-	SECURE_MODE(BAIKAL_NIC_XGB_VDU, SECURE_MODE_OFF);
-	SECURE_MODE(BAIKAL_NIC_XGB_HDMI, SECURE_MODE_OFF);
-	SECURE_MODE(BAIKAL_NIC_XGB0_CNT, SECURE_MODE_OFF);
-	SECURE_MODE(BAIKAL_NIC_XGB0_PHY, SECURE_MODE_OFF);
-	SECURE_MODE(BAIKAL_NIC_XGB1_CNT, SECURE_MODE_OFF);
-	SECURE_MODE(BAIKAL_NIC_XGB1_PHY, SECURE_MODE_OFF);
-	SECURE_MODE(BAIKAL_NIC_1GB_0 , SECURE_MODE_OFF);
-	SECURE_MODE(BAIKAL_NIC_1GB_1 , SECURE_MODE_OFF);
+		      MMXGBE_XGBE1_PROT_CTL_REG_AWPROT(2) |
+		      MMXGBE_XGBE1_PROT_CTL_REG_ARPROT(2));
+
+	mmio_write_32(MMXGBE_HDMI_VIDEO_PROT_CTL_REG,
+		      MMXGBE_HDMI_VIDEO_PROT_CTL_REG_ARPROT(2));
+
+	mmio_write_32(MMXGBE_HDMI_AUDIO_PROT_CTL_REG,
+		      MMXGBE_HDMI_AUDIO_PROT_CTL_REG_ARPROT(2));
+
+	mmio_write_32(BAIKAL_NIC_XGB_TCU,  SECURE_MODE_OFF);
+	mmio_write_32(BAIKAL_NIC_XGB_VDU,  SECURE_MODE_OFF);
+	mmio_write_32(BAIKAL_NIC_XGB_HDMI, SECURE_MODE_OFF);
+	mmio_write_32(BAIKAL_NIC_XGB0_CNT, SECURE_MODE_OFF);
+	mmio_write_32(BAIKAL_NIC_XGB0_PHY, SECURE_MODE_OFF);
+	mmio_write_32(BAIKAL_NIC_XGB1_CNT, SECURE_MODE_OFF);
+	mmio_write_32(BAIKAL_NIC_XGB1_PHY, SECURE_MODE_OFF);
+	mmio_write_32(BAIKAL_NIC_1GB_0,	   SECURE_MODE_OFF);
+	mmio_write_32(BAIKAL_NIC_1GB_1,	   SECURE_MODE_OFF);
 }

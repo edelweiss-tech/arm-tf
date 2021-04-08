@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020, Baikal Electronics JSC. All rights reserved.
+ * Copyright (c) 2018-2021, Baikal Electronics, JSC. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -19,8 +19,8 @@
 	.globl	plat_secondary_cold_boot_setup
 
 /*
- *  unsigned int plat_baikal_calc_core_pos(u_register_t mpidr);
- *  With this function: CorePos = (ClusterId * 2) + CoreId
+ * unsigned int plat_baikal_calc_core_pos(u_register_t mpidr);
+ * With this function: CorePos = (ClusterId * 2) + CoreId
  */
 func plat_baikal_calc_core_pos
 	and	x1, x0, #MPIDR_CPU_MASK
@@ -30,10 +30,10 @@ func plat_baikal_calc_core_pos
 endfunc plat_baikal_calc_core_pos
 
 	/* ---------------------------------------------
-	 * int plat_crash_console_flush()
+	 * void plat_crash_console_flush()
 	 * Function to force a write of all buffered
 	 * data that hasn't been output.
-	 * Out : return -1 on error else return 0.
+	 * Out : void.
 	 * Clobber list : x0, x1
 	 * ---------------------------------------------
 	 */
@@ -42,17 +42,18 @@ func plat_crash_console_flush
 	b	console_16550_core_flush
 endfunc plat_crash_console_flush
 
-        /* ---------------------------------------------
-         * int plat_crash_console_init(void)
-         * Function to initialize the crash console
-         * without a C Runtime to print crash report.
-         * Clobber list : x0, x1, x2
-         * ---------------------------------------------
-         */
+	/* ---------------------------------------------
+	 * int plat_crash_console_init(void)
+	 * Function to initialize the crash console
+	 * without a C Runtime to print crash report.
+	 * Clobber list : x0, x1, x2
+	 * ---------------------------------------------
+	 */
 func plat_crash_console_init
 	mov_imm x0, PLAT_BAIKAL_CRASH_UART_BASE
 	mov_imm x1, PLAT_BAIKAL_CRASH_UART_CLK_IN_HZ
 	mov_imm x2, PLAT_BAIKAL_CONSOLE_BAUDRATE
+	b	console_16550_core_init
 endfunc plat_crash_console_init
 
 	/* ---------------------------------------------
@@ -64,7 +65,7 @@ endfunc plat_crash_console_init
 	 */
 func plat_crash_console_putc
 	mov_imm x1, PLAT_BAIKAL_CRASH_UART_BASE
-	b       console_16550_core_putc
+	b	console_16550_core_putc
 endfunc plat_crash_console_putc
 
 func plat_get_my_entrypoint

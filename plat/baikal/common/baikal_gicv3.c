@@ -1,10 +1,11 @@
 /*
- * Copyright (c) 2020, Baikal Electronics JSC. All rights reserved.
+ * Copyright (c) 2020-2021, Baikal Electronics, JSC. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
 #include <drivers/arm/gicv3.h>
+#include <lib/utils_def.h>
 #include <plat/common/platform.h>
 #include <platform_def.h>
 

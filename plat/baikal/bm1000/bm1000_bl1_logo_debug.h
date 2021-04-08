@@ -1,15 +1,12 @@
-/** @file  baikal_bl1_logo_debug.h
-
- Copyright (C) 2020 Baikal Electronics JSC
-
- Author: Pavel Parkhomenko <Pavel.Parkhomenko@baikalelectronics.ru>
-
- **/
-
 /*
- * Tiny 24x32 logo for debug version of BL1 to fit into Mailbox.
+ * Copyright (c) 2020, Baikal Electronics, JSC. All rights reserved.
+ *
+ * Author: Pavel Parkhomenko <pavel.parkhomenko@baikalelectronics.ru>
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
+/* Tiny 24x32 logo for debug version of BL1 to fit into Mailbox */
 const unsigned char bl1_logo[] = {
   0x42, 0x4d, 0x46, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46, 0x00,
   0x00, 0x00, 0x38, 0x00, 0x00, 0x00, 0x18, 0x00, 0x00, 0x00, 0x20, 0x00,

@@ -1,18 +1,18 @@
-/** @file  baikal_hdmi.h
+/*
+ * Copyright (c) 2020, Baikal Electronics, JSC. All rights reserved.
+ *
+ * Author: Pavel Parkhomenko <pavel.parkhomenko@baikalelectronics.ru>
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * Parts of this file were based on sources as follows:
+ *
+ * Copyright (c) 2011, ARM Ltd. All rights reserved.<BR>
+ * SPDX-License-Identifier: BSD-2-Clause-Patent
+ */
 
- Copyright (C) 2020 Baikal Electronics JSC
-
- Author: Pavel Parkhomenko <Pavel.Parkhomenko@baikalelectronics.ru>
-
- Parts of this file were based on sources as follows:
-
- Copyright (c) 2011, ARM Ltd. All rights reserved.<BR>
- SPDX-License-Identifier: BSD-2-Clause-Patent
-
- **/
-
-#ifndef __BAIKAL_HDMI_H
-#define __BAIKAL_HDMI_H
+#ifndef BM1000_HDMI_H
+#define BM1000_HDMI_H
 
 #define HDMI_REG_WIDTH	4
 
@@ -81,18 +81,17 @@
 #define BAIKAL_HDMI_PHY_CKSYMTXCTRL     0x09    /* Tx symbols control and slope boost */
 
 enum {
-
-/* PHY_TST0 field values */
+	/* PHY_TST0 field values */
 	BAIKAL_HDMI_PHY_TST0_TSTCLR_MASK = 0x20,
 
-/* PHY_STAT0 field values */
+	/* PHY_STAT0 field values */
 	BAIKAL_HDMI_PHY_TX_PHY_LOCK = 0x01,
 
-/* TX_INVID0 field values */
+	/* TX_INVID0 field values */
 	BAIKAL_HDMI_TX_INVID0_VIDEO_MAPPING_MASK = 0x1F,
 	BAIKAL_HDMI_TX_INVID0_VIDEO_MAPPING_OFFSET = 0,
 
-/* FC_INVIDCONF field values */
+	/* FC_INVIDCONF field values */
 	BAIKAL_HDMI_FC_INVIDCONF_VSYNC_IN_POLARITY_MASK = 0x40,
 	BAIKAL_HDMI_FC_INVIDCONF_VSYNC_IN_POLARITY_ACTIVE_HIGH = 0x40,
 	BAIKAL_HDMI_FC_INVIDCONF_VSYNC_IN_POLARITY_ACTIVE_LOW = 0x00,
@@ -112,7 +111,7 @@ enum {
 	BAIKAL_HDMI_FC_INVIDCONF_IN_I_P_INTERLACED = 0x1,
 	BAIKAL_HDMI_FC_INVIDCONF_IN_I_P_PROGRESSIVE = 0x0,
 
-/* PHY_CONF0 field values */
+	/* PHY_CONF0 field values */
 	BAIKAL_HDMI_PHY_CONF0_PDZ_MASK = 0x80,
 	BAIKAL_HDMI_PHY_CONF0_PDZ_OFFSET = 7,
 	BAIKAL_HDMI_PHY_CONF0_ENTMDS_MASK = 0x40,
@@ -130,11 +129,11 @@ enum {
 	BAIKAL_HDMI_PHY_CONF0_SELDIPIF_MASK = 0x1,
 	BAIKAL_HDMI_PHY_CONF0_SELDIPIF_OFFSET = 0,
 
-/* PHY_I2CM_OPERATION_ADDR field values */
+	/* PHY_I2CM_OPERATION_ADDR field values */
 	BAIKAL_HDMI_PHY_I2CM_OPERATION_ADDR_WRITE = 0x10,
 	BAIKAL_HDMI_PHY_I2CM_OPERATION_ADDR_READ = 0x1,
 
-/* MC_CLKDIS field values */
+	/* MC_CLKDIS field values */
 	BAIKAL_HDMI_MC_CLKDIS_HDCPCLK_DISABLE = 0x40,
 	BAIKAL_HDMI_MC_CLKDIS_CECCLK_DISABLE = 0x20,
 	BAIKAL_HDMI_MC_CLKDIS_CSCCLK_DISABLE = 0x10,
@@ -143,14 +142,13 @@ enum {
 	BAIKAL_HDMI_MC_CLKDIS_TMDSCLK_DISABLE = 0x2,
 	BAIKAL_HDMI_MC_CLKDIS_PIXELCLK_DISABLE = 0x1,
 
-/* MC_PHYRSTZ field values */
+	/* MC_PHYRSTZ field values */
 	BAIKAL_HDMI_MC_PHYRSTZ_ASSERT = 0x0,
 	BAIKAL_HDMI_MC_PHYRSTZ_DEASSERT = 0x1,
 
-/* MC_HEACPHY_RST field values */
+	/* MC_HEACPHY_RST field values */
 	BAIKAL_HDMI_MC_HEACPHY_RST_ASSERT = 0x1,
 	BAIKAL_HDMI_MC_HEACPHY_RST_DEASSERT = 0x0,
-
 };
 
-#endif /* __BAIKAL_HDMI_H */
+#endif /* BM1000_HDMI_H */

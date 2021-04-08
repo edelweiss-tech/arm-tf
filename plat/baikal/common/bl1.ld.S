@@ -98,10 +98,7 @@ SECTIONS
 
     .data . : ALIGN(DATA_ALIGN) {
         __DATA_START__ = .;
-        KEEP(*(cpus_hold_state))
-        __BL1_TESTS_DESC_START__ = .;
-        KEEP(*(bl1_test_desc))
-        __BL1_TESTS_DESC_END__ = .;
+        KEEP(*(.trusted_mailbox))
         *(SORT_BY_ALIGNMENT(.data*))
         __DATA_END__ = .;
     } >RAM AT>ROM

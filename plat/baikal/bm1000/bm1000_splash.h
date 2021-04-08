@@ -1,13 +1,13 @@
-/** @file  baikal_splash.h
+/*
+ * Copyright (c) 2020, Baikal Electronics, JSC. All rights reserved.
+ *
+ * Author: Pavel Parkhomenko <pavel.parkhomenko@baikalelectronics.ru>
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
 
- Copyright (C) 2020 Baikal Electronics JSC
-
- Author: Pavel Parkhomenko <Pavel.Parkhomenko@baikalelectronics.ru>
-
- **/
-
-#ifndef __BAIKAL_SPLASH_H
-#define __BAIKAL_SPLASH_H
+#ifndef BM1000_SPLASH_H
+#define BM1000_SPLASH_H
 
 #include <stdint.h>
 
@@ -53,4 +53,4 @@ void vdu_set_fb(uint64_t vdu_base, uint32_t fb_base, modeline_t *mode, int fb_cp
 void wait_for_vblank(uint64_t vdu_base);
 int fdt_get_panel(modeline_t *modeline);
 
-#endif /* __BAIKAL_SPLASH_H */
+#endif /* BM1000_SPLASH_H */

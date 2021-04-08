@@ -1,10 +1,13 @@
-// Copyright (c) 2020 Baikal Electronics JSC
-// Author: Mikhail Ivanov <michail.ivanov@baikalelectronics.ru>
+/*
+ * Copyright (c) 2020-2021, Baikal Electronics, JSC. All rights reserved.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
 
-#ifndef __ARMTF_SPD_H
-#define __ARMTF_SPD_H
+#ifndef SPD_H
+#define SPD_H
 
-unsigned short spd_get_baseconf_crc(const void* const baseconf);
-unsigned long long spd_get_baseconf_dimm_capacity(const void* const baseconf);
+unsigned short spd_get_baseconf_crc(const void *const baseconf);
+unsigned long long spd_get_baseconf_dimm_capacity(const void *const baseconf);
 
-#endif // __ARMTF_SPD_H
+#endif /* SPD_H */

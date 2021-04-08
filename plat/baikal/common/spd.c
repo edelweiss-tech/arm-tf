@@ -1,21 +1,24 @@
-// Copyright (c) 2020 Baikal Electronics JSC
-// Author: Mikhail Ivanov <michail.ivanov@baikalelectronics.ru>
+/*
+ * Copyright (c) 2020-2021, Baikal Electronics, JSC. All rights reserved.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
 
+#include <spd.h>
 #include <stdint.h>
-#include "spd.h"
 
-unsigned short spd_get_baseconf_crc(const void* const baseconf)
+unsigned short spd_get_baseconf_crc(const void *const baseconf)
 {
 	const uint8_t *const spdbuf = baseconf;
 	return spdbuf[126] | (spdbuf[127] << 8);
 }
 
-unsigned long long spd_get_baseconf_dimm_capacity(const void* const baseconf)
+unsigned long long spd_get_baseconf_dimm_capacity(const void *const baseconf)
 {
 	const uint8_t *const spdbuf = baseconf;
 	unsigned long long sdram_capacity_per_die;
 
-	// SDRAM capacity in MiB
+	/* SDRAM capacity in MiB */
 	switch (spdbuf[4] & 0xf) {
 	case 0:
 		sdram_capacity_per_die = 256;
@@ -51,7 +54,8 @@ unsigned long long spd_get_baseconf_dimm_capacity(const void* const baseconf)
 		return 0;
 	}
 
-	sdram_capacity_per_die *= 1024 * 1024; // SDRAM capacity in bytes
+	/* SDRAM capacity in bytes */
+	sdram_capacity_per_die *= 1024 * 1024;
 
 	const unsigned short primary_bus_width = 8 << (spdbuf[13] & 0x7);
 	const unsigned char sdram_device_width = 4 << (spdbuf[12] & 0x3);

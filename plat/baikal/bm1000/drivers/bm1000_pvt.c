@@ -1,52 +1,53 @@
-#include <arch_helpers.h>
-#include <bm1000_private.h>
+/*
+ * Copyright (c) 2019-2021, Baikal Electronics, JSC. All rights reserved.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 #include <bm1000_pvt.h>
-#include <common/debug.h>
-#include <drivers/delay_timer.h>
-#include <errno.h>
 #include <lib/mmio.h>
+#include <lib/utils_def.h>
 #include <platform_def.h>
 
-uint32_t get_pvt_addr_by_id(uint32_t pvt_id)
+static uintptr_t pvt_get_addr(uint32_t pvt_id, uint32_t offset)
 {
-	switch(pvt_id) {
-		case 0:
-			return A57_0_PVTCC_ADDR;
-		case 1:
-			return A57_1_PVTCC_ADDR;
-		case 2:
-			return A57_2_PVTCC_ADDR;
-		case 3:
-			return A57_3_PVTCC_ADDR;
-		case 4:
-			return MALI_PVTCC_ADDR;
-		default:
-			return 1;
+	static const uintptr_t pvtcc_bases[] = {
+		A57_0_PVTCC_ADDR,
+		A57_1_PVTCC_ADDR,
+		A57_2_PVTCC_ADDR,
+		A57_3_PVTCC_ADDR,
+		MALI_PVTCC_ADDR
+	};
+
+	/* Ensure that pvt_id is correct and the offset in PVT address range */
+	if (pvt_id < ARRAY_SIZE(pvtcc_bases) && !(offset & ~PVT_AREA_MASK)) {
+		return pvtcc_bases[pvt_id] + offset;
 	}
-	return 1;
+
+	return 0;
 }
 
 uint32_t pvt_read_reg(uint32_t pvt_id, uint32_t offset)
 {
-	uint32_t reg;
+	uintptr_t addr;
 
-	if ((offset & ~PVT_AREA_MASK) != 0)
+	addr = pvt_get_addr(pvt_id, offset);
+	if (!addr) {
 		return 1;
-	/* Ensure that offset in pvt address range */
-	offset &= PVT_AREA_MASK;
-	reg = get_pvt_addr_by_id(pvt_id);
-	return mmio_read_32(reg + offset);
+	}
+
+	return mmio_read_32(addr);
 }
 
 uint32_t pvt_write_reg(uint32_t pvt_id, uint32_t offset, uint32_t val)
 {
-	uint32_t reg;
+	uintptr_t addr;
 
-	if ((offset & ~PVT_AREA_MASK) != 0)
+	addr = pvt_get_addr(pvt_id, offset);
+	if (!addr) {
 		return 1;
-	/* Ensure that offset in pvt address range */
-	offset &= PVT_AREA_MASK;
-	reg = get_pvt_addr_by_id(pvt_id);
-	mmio_write_32(reg + offset, val);
+	}
+
+	mmio_write_32(addr, val);
 	return 0;
 }

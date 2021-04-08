@@ -1,26 +1,36 @@
-/** @file  baikal_smmu.c
-
- Copyright (C) 2020 Baikal Electronics JSC
-
- Author: Pavel Parkhomenko <Pavel.Parkhomenko@baikalelectronics.ru>
-
- **/
+/*
+ * Copyright (c) 2020-2021, Baikal Electronics, JSC. All rights reserved.
+ *
+ * Author: Pavel Parkhomenko <pavel.parkhomenko@baikalelectronics.ru>
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
 
 #include <arch_helpers.h>
+#include <bm1000_private.h>
 #include <bm1000_smmu.h>
 #include <common/debug.h>
+#include <drivers/delay_timer.h>
 #include <lib/mmio.h>
+#include <platform_def.h>
 
 static int smmu_set_normalize(uint64_t smmu_offset, bool normalize)
 {
+	uint64_t timeout;
+
 	/* we have to invalidate TLB before setting attribute normalization */
-	mmio_write_32(smmu_offset + SMMU_STLBIALL, 0xffffffff);
+	mmio_write_32(smmu_offset + SMMU_STLBIALL,  0xffffffff);
 	mmio_write_32(smmu_offset + SMMU_STLBGSYNC, 0xffffffff);
-	WAIT_DELAY(
-		((mmio_read_32(smmu_offset + SMMU_STLBGSTATUS) & SMMU_STLBGSTATUS_GSACTIVE) == 1),
-		100000, // 100ms
-		ERROR("%s\n", "TLB invalidate timeout!")
-		);
+
+	timeout = timeout_init_us(100000);
+	while ((mmio_read_32(smmu_offset + SMMU_STLBGSTATUS) &
+		SMMU_STLBGSTATUS_GSACTIVE) == 1) {
+		if (timeout_elapsed(timeout)) {
+			ERROR("TLB invalidate timeout\n");
+			break;
+		}
+	}
+
 	if (normalize)
 		mmio_setbits_32(smmu_offset + SMMU_SACR, SMMU_SACR_NORMALIZE);
 	else

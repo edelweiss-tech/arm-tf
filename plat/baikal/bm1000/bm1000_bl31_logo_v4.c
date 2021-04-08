@@ -1,10 +1,10 @@
-/** @file  baikal_bl31_logo.c
-
- Copyright (C) 2020 Baikal Electronics JSC
-
- Author: Pavel Parkhomenko <Pavel.Parkhomenko@baikalelectronics.ru>
-
- **/
+/*
+ * Copyright (c) 2020, Baikal Electronics, JSC. All rights reserved.
+ *
+ * Author: Pavel Parkhomenko <pavel.parkhomenko@baikalelectronics.ru>
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
 
 /*
  * To change a logo, replace array contents below with a BMP file dump.

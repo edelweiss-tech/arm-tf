@@ -1,8 +1,9 @@
 /*
- * Copyright (c) 2015-2017, ARM Limited and Contributors. All rights reserved.
+ * Copyright (c) 2018-2021, Baikal Electronics, JSC. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
+
 #include <arch_helpers.h>
 #include <assert.h>
 #include <baikal_console.h>
@@ -35,8 +36,10 @@
 /* Data structure which holds the extents of the trusted SRAM for BL2 */
 static meminfo_t bl2_tzram_layout __aligned(CACHE_WRITEBACK_GRANULE);
 
-void bl2_early_platform_setup2(u_register_t arg0, u_register_t arg1,
-                               u_register_t arg2, u_register_t arg3)
+void bl2_early_platform_setup2(u_register_t arg0,
+			       u_register_t arg1,
+			       u_register_t arg2,
+			       u_register_t arg3)
 {
 	meminfo_t *mem_layout = (meminfo_t *) arg1;
 	baikal_console_boot_init();
@@ -76,29 +79,32 @@ void bl2_platform_setup(void)
 
 	ret = fdt_open_into(fdt, fdt, PLAT_BAIKAL_DT_MAX_SIZE);
 	if (ret >= 0) {
-#if defined(BE_DBM) || defined(BE_MITX)
+#if defined(BE_DBM) || defined(BE_MBM10) || defined(BE_MBM10_2FLASH)
 		unsigned dimm_idx;
 #if defined(BE_DBM)
-		// DBM has 4 DIMM slots with the following SPD addresses: 0x50, 0x51, 0x52, 0x53.
-		// But only 0x50 and 0x52 are used by SCP.
+		/*
+		 * DBM has 4 DIMM slots with the following SPD addresses:
+		 * 0x50, 0x51, 0x52, 0x53.
+		 * But only 0x50 and 0x52 are used by SCP.
+		 */
 		static const uint8_t dimm_spd_addrs[] = {0x50, 0x52};
-#elif defined (BE_MITX)
+#elif defined (BE_MBM10) || defined(BE_MBM10_2FLASH)
 		static const uint8_t dimm_spd_addrs[] = {0x50, 0x52};
 #endif
 		unsigned long long total_capacity = 0;
 
-		// Read DDR4 DIMM SPD EEPROMs for base configuration and DRAM parameters
-		for (dimm_idx = 0; dimm_idx < sizeof dimm_spd_addrs / sizeof dimm_spd_addrs[0]; ++dimm_idx) {
+		/* Read DDR4 DIMM SPD EEPROMs for base configuration and DRAM parameters */
+		for (dimm_idx = 0; dimm_idx < ARRAY_SIZE(dimm_spd_addrs); ++dimm_idx) {
 			uint8_t spd[128];
 			unsigned spd_rx_size;
 			static const uint8_t startaddr = 0;
 #if defined(BE_DBM)
-			spd_rx_size = i2c_txrx(1, dimm_spd_addrs[dimm_idx], &startaddr, sizeof startaddr, spd, sizeof spd);
-#elif defined (BE_MITX)
-			spd_rx_size = smbus_txrx(0, dimm_spd_addrs[dimm_idx], &startaddr, sizeof startaddr, spd, sizeof spd);
+			spd_rx_size = i2c_txrx(1, dimm_spd_addrs[dimm_idx], &startaddr, sizeof(startaddr), spd, sizeof(spd));
+#elif defined (BE_MBM10) || defined(BE_MBM10_2FLASH)
+			spd_rx_size = smbus_txrx(0, dimm_spd_addrs[dimm_idx], &startaddr, sizeof(startaddr), spd, sizeof(spd));
 #endif
-			if (spd_rx_size == sizeof spd) {
-				if (spd_get_baseconf_crc(spd) == crc16(spd, sizeof spd - 2)) {
+			if (spd_rx_size == sizeof(spd)) {
+				if (spd_get_baseconf_crc(spd) == crc16(spd, sizeof(spd) - 2)) {
 					const unsigned long long dimm_capacity = spd_get_baseconf_dimm_capacity(spd);
 					if (dimm_capacity > 0) {
 						INFO("BL2: DDR4 DIMM%d capacity is %lld MiB\n", dimm_idx, dimm_capacity / (1024 * 1024));
@@ -115,29 +121,29 @@ void bl2_platform_setup(void)
 		}
 
 		if (total_capacity > 0) {
-			unsigned long long rangedescs[3][2];
-			unsigned rangenum;
+			uint64_t region_descs[3][2];
+			unsigned region_num;
 
-			rangedescs[0][0] = 0x80000000;
-			rangedescs[1][0] = 0x880000000;
-			rangedescs[2][0] = 0x8800000000;
+			region_descs[0][0] = REGION_DRAM0_BASE;
+			region_descs[1][0] = REGION_DRAM1_BASE;
+			region_descs[2][0] = REGION_DRAM2_BASE;
 
-			if (total_capacity <= 2ull * 1024 * 1024 * 1024) {
-				rangedescs[0][1] = total_capacity;
-				rangenum = 1;
+			if (total_capacity <= REGION_DRAM0_SIZE) {
+				region_descs[0][1] = total_capacity;
+				region_num = 1;
 			} else {
-				rangedescs[0][1] = 2ull * 1024 * 1024 * 1024;
-				if (total_capacity <= 32ull * 1024 * 1024 * 1024) {
-					rangedescs[1][1] = total_capacity - 2ull * 1024 * 1024 * 1024;
-					rangenum = 2;
+				region_descs[0][1] = REGION_DRAM0_SIZE;
+				if (total_capacity <= (REGION_DRAM0_SIZE + REGION_DRAM1_SIZE)) {
+					region_descs[1][1] = total_capacity - REGION_DRAM0_SIZE;
+					region_num = 2;
 				} else {
-					rangedescs[1][1] = 30ull * 1024 * 1024 * 1024;
-					rangedescs[2][1] = total_capacity - 32ull * 1024 * 1024 * 1024;
-					rangenum = 3;
+					region_descs[1][1] = REGION_DRAM1_SIZE;
+					region_descs[2][1] = total_capacity - (REGION_DRAM0_SIZE + REGION_DRAM1_SIZE);
+					region_num = 3;
 				}
 			}
 
-			dt_update_memory(fdt, rangedescs, rangenum);
+			fdt_update_memory(fdt, region_descs, region_num);
 		}
 #endif
 		dt_add_psci(fdt);
@@ -157,14 +163,12 @@ void bl2_platform_setup(void)
 void bl2_plat_arch_setup(void)
 {
 	baikal_configure_mmu_el1(bl2_tzram_layout.total_base,
-			      bl2_tzram_layout.total_size,
-			      BL2_RO_BASE, BL2_RO_LIMIT,
-			      BL_COHERENT_RAM_BASE, BL_COHERENT_RAM_END);
+				 bl2_tzram_layout.total_size,
+				 BL2_RO_BASE, BL2_RO_LIMIT,
+				 BL_COHERENT_RAM_BASE, BL_COHERENT_RAM_END);
 }
 
-/*******************************************************************************
- * Gets SPSR for BL32 entry
- ******************************************************************************/
+/* Gets SPSR for BL32 entry */
 static uint32_t baikal_get_spsr_for_bl32_entry(void)
 {
 	/*
@@ -174,9 +178,7 @@ static uint32_t baikal_get_spsr_for_bl32_entry(void)
 	return 0;
 }
 
-/*******************************************************************************
- * Gets SPSR for BL33 entry
- ******************************************************************************/
+/* Gets SPSR for BL33 entry */
 static uint32_t baikal_get_spsr_for_bl33_entry(void)
 {
 	unsigned int mode;
@@ -206,7 +208,7 @@ static int baikal_bl2_handle_post_image_load(unsigned int image_id)
 	assert(bl_mem_params);
 
 	switch (image_id) {
-# ifdef AARCH64
+#ifdef __aarch64__
 	case BL32_IMAGE_ID:
 #ifdef SPD_opteed
 		pager_mem_params = get_bl_mem_params_node(BL32_EXTRA1_IMAGE_ID);
@@ -230,7 +232,7 @@ static int baikal_bl2_handle_post_image_load(unsigned int image_id)
 #endif
 		bl_mem_params->ep_info.spsr = baikal_get_spsr_for_bl32_entry();
 		break;
-# endif
+#endif
 	case BL33_IMAGE_ID:
 		/* BL33 expects to receive the primary CPU MPID (through r0) */
 		bl_mem_params->ep_info.args.arg0 = 0xffff & read_mpidr();
@@ -241,10 +243,10 @@ static int baikal_bl2_handle_post_image_load(unsigned int image_id)
 	return err;
 }
 
-/*******************************************************************************
+/*
  * This function can be used by the platforms to update/use image
  * information for given `image_id`.
- ******************************************************************************/
+ */
 int bl2_plat_handle_post_image_load(unsigned int image_id)
 {
 	return baikal_bl2_handle_post_image_load(image_id);

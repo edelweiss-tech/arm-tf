@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020, Baikal Electronics JSC. All rights reserved.
+ * Copyright (c) 2018-2021, Baikal Electronics, JSC. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -44,20 +44,13 @@ func tzc_init
 endfunc tzc_init
 #endif
 
-func memtest
-	mov	x9, x30
-	log_cout s_memtest
-	mov	x30, x9
-	ret
-endfunc memtest
-
 func platform_mem_init
+#ifdef BE_HAPS
 	mov	x8, x30
 	log_cout s_mem
-#ifdef BE_HAPS
 	bl	tzc_init
-#endif
 	mov	x30, x8
+#endif
 	ret
 endfunc platform_mem_init
 
@@ -65,8 +58,6 @@ endfunc platform_mem_init
 	 * void plat_report_exception(unsigned int type)
 	 * Function to report an unhandled exception
 	 * with platform-specific means.
-	 * eg. On HIKEY platform, it updates the LEDs
-	 * to indicate where we are
 	 * ---------------------------------------------
 	 */
 func plat_report_exception
@@ -117,46 +108,10 @@ plat_report_end:
 	ret
 endfunc plat_report_exception
 
-func init_gpr
-// init GPR...
-	mov	x0, xzr
-	mov	x1, xzr
-	mov	x2, xzr
-	mov	x3, xzr
-	mov	x4, xzr
-	mov	x5, xzr
-	mov	x6, xzr
-	mov	x7, xzr
-//	mov	x8, xzr
-	mov	x9, xzr
-	mov	x10, xzr
-	mov	x11, xzr
-	mov	x12, xzr
-	mov	x13, xzr
-	mov	x14, xzr
-	mov	x15, xzr
-	mov	x16, xzr
-	mov	x17, xzr
-	mov	x18, xzr
-//	mov	x19, xzr
-	mov	x20, xzr
-	mov	x21, xzr
-	mov	x22, xzr
-	mov	x23, xzr
-	mov	x24, xzr
-	mov	x25, xzr
-	mov	x26, xzr
-	mov	x27, xzr
-	mov	x28, xzr
-	mov	x29, xzr
-	ret
-endfunc	init_gpr
-
-/* -----------------------------------------------------
- * void plat_reset_handler(void);
- * -----------------------------------------------------
- */
-
+	/* -----------------------------------------------------
+	 * void plat_reset_handler(void);
+	 * -----------------------------------------------------
+	 */
 func plat_reset_handler
 	mov	x8, x30
 #ifdef BE_HAPS
@@ -173,17 +128,13 @@ func plat_reset_handler
 	bl	plat_is_my_cpu_primary
 	cbz	w0, 1f
 
-// early initialize vectors to catch errors
+	/* Early initialize vectors to catch errors */
 	adr	x0, bl1_exceptions
 	msr	vbar_el3, x0
 	isb
 
-	bl	init_gpr
-// TODO: AVLSP initialize(pll, resets? it is in SCP done)
-// Initialize console
 	bl	plat_crash_console_init
 	log_cout s_hello
-
 1:
 	mov	x30, x8
 	ret

@@ -1,8 +1,11 @@
-// Copyright (c) 2020 Baikal Electronics JSC
-// Author: Mikhail Ivanov <michail.ivanov@baikalelectronics.ru>
+/*
+ * Copyright (c) 2020, Baikal Electronics, JSC. All rights reserved.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
 
+#include <crc16.h>
 #include <stdint.h>
-#include "crc16.h"
 
 unsigned short crc16(const void *buf, unsigned bufsize)
 {
