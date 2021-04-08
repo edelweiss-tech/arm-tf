@@ -203,6 +203,7 @@ const struct flash_info spi_nor_ids[] = {
     { "w25q256jw",   FLASH_INFO(0xef6019,  64,  512) },
     { "w25m512jv",   FLASH_INFO(0xef7119,  64, 1024) },
     { "w25q16jv-im/jm", FLASH_INFO(0xef7015, 64,  32) },
+    { "w25q256fw",   FLASH_INFO(0xef6019,  64,  512) },
 
     /* Spansion */
     { "s25sl004a",   FLASH_INFO(0x010212,  64,    8) },
