@@ -270,6 +270,8 @@ static int transfer(int port, int line,
 	err = 0;
 
 exit:
+	if (err)
+		ERROR("Transfer error: cmd %x, status %x\n", *(uint8_t *)cmd_, SPI_SR(port));
 	gpio32_out_rst(CS_GPIO);
 	return err;
 }
@@ -362,22 +364,6 @@ static int exec(int port, int line, uint8_t cmd_op, uint32_t address,
 static int status(int port, int line, void *status_)
 {
 	return exec(port, line, CMD_FLASH_RDSR, 0, status_, 1);
-}
-
-static int flag_status(int port, int line, void *status_)
-{
-	return exec(port, line, CMD_FLASH_RFSR, 0, status_, 1);
-}
-
-static int get_mode(int port, int line)
-{
-	int flag;
-	int try = 10;
-	while (try--) {
-		flag_status(port, line, &flag);
-	}
-
-	return flag & SPI_FLAG_4BYTE ? ADR_MODE_4BYTE : ADR_MODE_3BYTE;
 }
 
 static int wren(int port, int line)
@@ -549,10 +535,7 @@ int dw_spi_3byte(int port, int line)
 		return err;
 	}
 
-	adr_mode = get_mode(port, line);
-	if (adr_mode != ADR_MODE_3BYTE) {
-		adr_mode = ADR_MODE_3BYTE;
-	}
+	adr_mode = ADR_MODE_3BYTE;
 
 	return 0;
 }
@@ -575,10 +558,7 @@ int dw_spi_4byte(int port, int line)
 		return err;
 	}
 
-	adr_mode = get_mode(port, line);
-	if (adr_mode != ADR_MODE_4BYTE) {
-		adr_mode = ADR_MODE_4BYTE;
-	}
+	adr_mode = ADR_MODE_4BYTE;
 
 	return 0;
 }
