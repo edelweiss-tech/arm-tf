@@ -130,7 +130,7 @@ void mmxgbe_init(void)
 			MMXGBE_ASYNCRES_REG_DMA_NICS_RES |
 			MMXGBE_ASYNCRES_REG_DMA_NICM_RES);
 
-#if defined(BE_MBM10) || defined(BE_MBM10_2FLASH)
+#if defined(BE_MBM10) && (BOARD_VER == 0)
 	gpio32_dir_set(MMXGBE_HDMI_LCRU_PLL1_RESET_GPIO_PIN);
 	gpio32_out_rst(MMXGBE_HDMI_LCRU_PLL1_RESET_GPIO_PIN);
 	mdelay(10);

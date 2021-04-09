@@ -26,10 +26,13 @@ $(eval $(call add_define,BE_DBM))
 SPI_DRIVER_SOURCES	:=	plat/baikal/common/spi_dw_boot.c
 else ifeq ($(BE_TARGET),mitx)
 $(eval $(call add_define,BE_MBM10))
+$(eval $(call add_define,BOARD_VER))
+ifeq ($(DUAL_FLASH),no)
 SPI_DRIVER_SOURCES	:=	plat/baikal/common/spi_scp_boot.c
-else ifeq ($(BE_TARGET),mitx_2flash)
+else
 $(eval $(call add_define,BE_MBM10_2FLASH))
 SPI_DRIVER_SOURCES	:=	plat/baikal/common/spi_dw_boot.c
+endif
 else ifeq ($(BE_TARGET),qemu)
 $(eval $(call add_define,BE_QEMU))
 SPI_DRIVER_SOURCES	:=	plat/baikal/common/spi_dw_boot.c

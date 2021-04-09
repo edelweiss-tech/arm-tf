@@ -169,7 +169,7 @@ void mmlsp_init(void)
 	cmu_clkch_enable_by_base(MMAVLSP_CLKCH_TIMER3,	    AVLSP_CLK_50MHZ);
 	cmu_clkch_enable_by_base(MMAVLSP_CLKCH_TIMER4,	    AVLSP_CLK_50MHZ);
 
-#if defined(BE_MBM10) || defined(BE_MBM10_2FLASH)
+#if defined(BE_MBM10) && (BOARD_VER == 0)
 	gpio32_dir_set(MMAVLSP_VDU_LCRU_PLL1_RESET_GPIO_PIN);
 	gpio32_out_rst(MMAVLSP_VDU_LCRU_PLL1_RESET_GPIO_PIN);
 	mdelay(10);

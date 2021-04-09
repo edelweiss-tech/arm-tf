@@ -225,19 +225,6 @@ void vdu_init(uint64_t vdu_base, uint32_t fb_base, modeline_t *mode)
 		}
 		mmio_write_32(vdu_base + BAIKAL_VDU_REG_GPIOR, val);
 	}
-
-#ifdef BE_MBM10
-	gpio32_dir_set(17);
-	gpio32_out_set(17);
-
-	gpio32_dir_set(18);
-	gpio32_out_set(18);
-
-	gpio32_dir_set(19);
-	gpio32_out_set(19);
-	mdelay(10);
-	gpio32_out_rst(19);
-#endif
 }
 
 void hdmi_phy_power_on(void)
