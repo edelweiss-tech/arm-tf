@@ -416,6 +416,9 @@ int dw_spi_erase(int port,
 	VERBOSE("SPI: %s(0x%x, 0x%lx, 0x%lx)\n",
 		__func__, adr, size, sector_size);
 
+	if (!adr_mode)
+		dw_spi_init(port, line);
+
 	if (!sector_size) {
 		ERROR("SPI: %s: incorrect sector_size: %lu\n",
 		      __func__, sector_size);
@@ -455,6 +458,9 @@ int dw_spi_write(int port, int line, uint32_t adr, void *data, size_t size)
 	char *pdata = data;
 
 	VERBOSE("SPI: %s(0x%x, 0x%lx)\n", __func__, adr, size);
+
+	if (!adr_mode)
+		dw_spi_init(port, line);
 
 	while (size) {
 		part = MIN(size, SPI_PAGE_SIZE);
@@ -500,6 +506,9 @@ int dw_spi_read(int port, int line, uint32_t adr, void *data, size_t size)
 	char *pdata = data;
 
 	VERBOSE("SPI: %s(0x%x, 0x%lx)\n", __func__, adr, size);
+
+	if (!adr_mode)
+		dw_spi_init(port, line);
 
 	while (size) {
 		part = MIN(size, SPI_AUTO_READ_SIZE);
