@@ -205,6 +205,11 @@ bool cmu_is_mmca57(const uintptr_t base)
 	       base == MMCA57_3_LCRU;
 }
 
+static bool cmu_is_mmmali(uintptr_t base)
+{
+	return base == MMMALI_LCRU;
+}
+
 static void cmu_set_clkf(struct cmu_desc *cmu,
 			 uint64_t frefclk,
 			 uint64_t fpllreq)
@@ -215,7 +220,7 @@ static void cmu_set_clkf(struct cmu_desc *cmu,
 	assert(cmu);
 	assert(cmu->base);
 
-	if (cmu_is_mmca57(cmu->base)) {
+	if (cmu_is_mmca57(cmu->base) || cmu_is_mmmali(cmu->base)) {
 		reg  = mmio_read_32(cmu->base + CMU_PLL_CTL0_REG);
 		if (reg & (CMU_PLL_CTL0_CLKR_MASK | CMU_PLL_CTL0_CLKOD_MASK)) {
 			WARN("%s: (CPU) unexpected NF/OD: %x\n", __func__, reg);
@@ -508,7 +513,7 @@ int64_t cmu_pll_round_rate(const uintptr_t base,
 	if (frefclk != cmu->frefclk)
 		WARN("%s: CMU-ID %lx: frefclk %u != cmu frefclk %u\n",
 			__func__, base, (uint32_t)frefclk, (uint32_t) cmu->frefclk);
-	if (cmu_is_mmca57(base)) {
+	if (cmu_is_mmca57(base) || cmu_is_mmmali(base)) {
 		plldivs.clkod = 1;
 		plldivs.clkr = 1;
 		plldivs.clkfhi = ((fpllreq + frefclk / 2) / frefclk) << 1;
@@ -552,7 +557,7 @@ static int cmu_runtime_set_rate(struct cmu_desc *cmu,
 	assert(cmu->base);
 
 	INFO("%s: %s(): %llu\n", cmu->name, __func__, fpllreq);
-	if (cmu_is_mmca57(cmu->base)) {
+	if (cmu_is_mmca57(cmu->base) || cmu_is_mmmali(cmu->base)) {
 		return cmu_runtime_set_core_rate(cmu, frefclk, fpllreq);
 	} else {
 		return cmu_runtime_set_periph_rate(cmu, frefclk, fpllreq);
