@@ -89,7 +89,7 @@ void bl2_platform_setup(void)
 		 */
 		static const uint8_t dimm_spd_addrs[] = {0x50, 0x52};
 #elif defined (BE_MBM10) || defined(BE_MBM10_2FLASH)
-		static const uint8_t dimm_spd_addrs[] = {0x50, 0x52};
+		static const uint8_t dimm_spd_addrs[] = {0x50, 0x51, 0x52, 0x53};
 #endif
 		unsigned long long total_capacity = 0;
 
